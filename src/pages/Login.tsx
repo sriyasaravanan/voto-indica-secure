@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Vote, Shield, Mail, Lock, User, ArrowLeft } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useOTP } from "@/hooks/useOTP";
 
 const Login = () => {
   const [userForm, setUserForm] = useState({ email: "", password: "", otp: "" });
@@ -16,31 +16,42 @@ const Login = () => {
   const [otpSent, setOtpSent] = useState(false);
   const [currentTab, setCurrentTab] = useState("user");
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { sendOTP, verifyOTP, isLoading } = useOTP();
 
-  const handleSendOTP = (userType: string) => {
-    setOtpSent(true);
-    toast({
-      title: "OTP Sent",
-      description: `Verification code sent to your ${userType === 'user' ? 'email' : 'registered email'}`,
-    });
-  };
-
-  const handleLogin = (userType: string) => {
-    if (!otpSent) {
-      handleSendOTP(userType);
+  const handleSendOTP = async (userType: string) => {
+    const email = userType === 'user' ? userForm.email : adminForm.adminId;
+    
+    if (!email) {
       return;
     }
 
-    toast({
-      title: "Login Successful",
-      description: "Welcome to the blockchain voting platform",
-    });
+    const success = await sendOTP(email, userType as 'user' | 'admin');
+    if (success) {
+      setOtpSent(true);
+    }
+  };
 
-    if (userType === 'user') {
-      navigate('/user-dashboard');
-    } else {
-      navigate('/admin-dashboard');
+  const handleLogin = async (userType: string) => {
+    if (!otpSent) {
+      await handleSendOTP(userType);
+      return;
+    }
+
+    const form = userType === 'user' ? userForm : adminForm;
+    const email = userType === 'user' ? form.email : adminForm.adminId;
+    
+    if (!form.otp) {
+      return;
+    }
+
+    const isValid = await verifyOTP(email, form.otp);
+    
+    if (isValid) {
+      if (userType === 'user') {
+        navigate('/user-dashboard');
+      } else {
+        navigate('/admin-dashboard');
+      }
     }
   };
 
@@ -141,21 +152,21 @@ const Login = () => {
                 <Button 
                   onClick={() => handleLogin('user')}
                   className="w-full bg-saffron-500 hover:bg-saffron-600 text-white"
-                  disabled={!userForm.email || !userForm.password || (otpSent && !userForm.otp)}
+                  disabled={!userForm.email || !userForm.password || (otpSent && !userForm.otp) || isLoading}
                 >
-                  {otpSent ? 'Verify & Login' : 'Send OTP & Login'}
+                  {isLoading ? 'Processing...' : (otpSent ? 'Verify & Login' : 'Send OTP & Login')}
                 </Button>
               </TabsContent>
 
               <TabsContent value="admin" className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="admin-id">Admin ID</Label>
+                  <Label htmlFor="admin-id">Admin Email</Label>
                   <div className="relative">
-                    <Shield className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
                       id="admin-id"
-                      type="text"
-                      placeholder="ADMIN-XXXX-XXXX"
+                      type="email"
+                      placeholder="admin@example.com"
                       className="pl-10"
                       value={adminForm.adminId}
                       onChange={(e) => setAdminForm({...adminForm, adminId: e.target.value})}
@@ -195,9 +206,9 @@ const Login = () => {
                 <Button 
                   onClick={() => handleLogin('admin')}
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  disabled={!adminForm.adminId || !adminForm.password || (otpSent && !adminForm.otp)}
+                  disabled={!adminForm.adminId || !adminForm.password || (otpSent && !adminForm.otp) || isLoading}
                 >
-                  {otpSent ? 'Verify & Login' : 'Send OTP & Login'}
+                  {isLoading ? 'Processing...' : (otpSent ? 'Verify & Login' : 'Send OTP & Login')}
                 </Button>
               </TabsContent>
             </Tabs>

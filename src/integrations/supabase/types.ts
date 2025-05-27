@@ -9,13 +9,49 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      otp_codes: {
+        Row: {
+          created_at: string | null
+          email: string
+          expires_at: string
+          id: string
+          otp_code: string
+          user_type: string
+          verified: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          expires_at: string
+          id?: string
+          otp_code: string
+          user_type: string
+          verified?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          otp_code?: string
+          user_type?: string
+          verified?: boolean | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_otp: {
+        Args: { p_email: string; p_user_type: string }
+        Returns: string
+      }
+      verify_otp: {
+        Args: { p_email: string; p_otp_code: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
