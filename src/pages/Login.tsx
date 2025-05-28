@@ -19,6 +19,7 @@ const Login = () => {
   const { sendOTP, verifyOTP, isLoading } = useOTP();
 
   const handleSendOTP = async (userType: string) => {
+    // Fix the email extraction based on user type
     const email = userType === 'user' ? userForm.email : adminForm.adminId;
     
     if (!email) {
@@ -37,14 +38,15 @@ const Login = () => {
       return;
     }
 
-    const form = userType === 'user' ? userForm : adminForm;
-    const email = userType === 'user' ? form.email : adminForm.adminId;
+    // Fix the form and email extraction
+    const email = userType === 'user' ? userForm.email : adminForm.adminId;
+    const otp = userType === 'user' ? userForm.otp : adminForm.otp;
     
-    if (!form.otp) {
+    if (!otp) {
       return;
     }
 
-    const isValid = await verifyOTP(email, form.otp);
+    const isValid = await verifyOTP(email, otp);
     
     if (isValid) {
       if (userType === 'user') {
