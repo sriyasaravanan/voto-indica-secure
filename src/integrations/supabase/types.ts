@@ -9,6 +9,122 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      blockchain_blocks: {
+        Row: {
+          block_hash: string
+          block_number: number
+          id: string
+          is_validated: boolean | null
+          merkle_root: string
+          previous_block_hash: string | null
+          timestamp: string
+          validator_node: string
+          votes_count: number | null
+        }
+        Insert: {
+          block_hash: string
+          block_number?: number
+          id?: string
+          is_validated?: boolean | null
+          merkle_root: string
+          previous_block_hash?: string | null
+          timestamp?: string
+          validator_node?: string
+          votes_count?: number | null
+        }
+        Update: {
+          block_hash?: string
+          block_number?: number
+          id?: string
+          is_validated?: boolean | null
+          merkle_root?: string
+          previous_block_hash?: string | null
+          timestamp?: string
+          validator_node?: string
+          votes_count?: number | null
+        }
+        Relationships: []
+      }
+      candidates: {
+        Row: {
+          created_at: string
+          election_id: string | null
+          id: string
+          manifesto: string | null
+          name: string
+          party: string
+          symbol: string
+        }
+        Insert: {
+          created_at?: string
+          election_id?: string | null
+          id?: string
+          manifesto?: string | null
+          name: string
+          party: string
+          symbol: string
+        }
+        Update: {
+          created_at?: string
+          election_id?: string | null
+          id?: string
+          manifesto?: string | null
+          name?: string
+          party?: string
+          symbol?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidates_election_id_fkey"
+            columns: ["election_id"]
+            isOneToOne: false
+            referencedRelation: "elections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elections: {
+        Row: {
+          constituency: string
+          created_at: string
+          created_by: string | null
+          end_date: string
+          id: string
+          start_date: string
+          status: string
+          title: string
+          total_voters: number | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          constituency: string
+          created_at?: string
+          created_by?: string | null
+          end_date: string
+          id?: string
+          start_date: string
+          status?: string
+          title: string
+          total_voters?: number | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          constituency?: string
+          created_at?: string
+          created_by?: string | null
+          end_date?: string
+          id?: string
+          start_date?: string
+          status?: string
+          title?: string
+          total_voters?: number | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       otp_codes: {
         Row: {
           created_at: string | null
@@ -39,13 +155,125 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          constituency: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+          user_type: string
+          verified: boolean | null
+          voter_id: string | null
+        }
+        Insert: {
+          constituency?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string
+          user_type: string
+          verified?: boolean | null
+          voter_id?: string | null
+        }
+        Update: {
+          constituency?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_type?: string
+          verified?: boolean | null
+          voter_id?: string | null
+        }
+        Relationships: []
+      }
+      votes: {
+        Row: {
+          block_hash: string
+          candidate_id: string | null
+          election_id: string | null
+          id: string
+          is_verified: boolean | null
+          previous_block_hash: string | null
+          timestamp: string
+          verification_signature: string
+          vote_hash: string
+          voter_id: string | null
+        }
+        Insert: {
+          block_hash: string
+          candidate_id?: string | null
+          election_id?: string | null
+          id?: string
+          is_verified?: boolean | null
+          previous_block_hash?: string | null
+          timestamp?: string
+          verification_signature: string
+          vote_hash: string
+          voter_id?: string | null
+        }
+        Update: {
+          block_hash?: string
+          candidate_id?: string | null
+          election_id?: string | null
+          id?: string
+          is_verified?: boolean | null
+          previous_block_hash?: string | null
+          timestamp?: string
+          verification_signature?: string
+          vote_hash?: string
+          voter_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "votes_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_election_id_fkey"
+            columns: ["election_id"]
+            isOneToOne: false
+            referencedRelation: "elections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      cast_vote: {
+        Args: { p_election_id: string; p_candidate_id: string }
+        Returns: Json
+      }
+      generate_block_hash: {
+        Args: {
+          p_block_number: number
+          p_previous_hash: string
+          p_merkle_root: string
+          p_timestamp: string
+        }
+        Returns: string
+      }
       generate_otp: {
         Args: { p_email: string; p_user_type: string }
+        Returns: string
+      }
+      generate_vote_hash: {
+        Args: {
+          p_election_id: string
+          p_candidate_id: string
+          p_voter_id: string
+          p_timestamp: string
+        }
         Returns: string
       }
       verify_otp: {

@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,63 +7,45 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Vote, Shield, Eye, CheckCircle, Users, Calendar, MapPin, LogOut } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useElections } from "@/hooks/useElections";
+import { useBlockchain } from "@/hooks/useBlockchain";
+import { useAuth } from "@/hooks/useAuth";
 
 const UserDashboard = () => {
   const [selectedElection, setSelectedElection] = useState<string | null>(null);
   const [voteCast, setVoteCast] = useState(false);
   const [voteHash, setVoteHash] = useState("");
-  const { toast } = useToast();
+  
+  const { elections, candidates, loading: electionsLoading, fetchCandidates, castVote } = useElections();
+  const { votes, blocks, verifyVoteHash } = useBlockchain();
+  const { profile, signOut } = useAuth();
 
-  const elections = [
-    {
-      id: "lok-sabha-2024",
-      title: "Lok Sabha Elections 2024",
-      type: "National",
-      status: "Active",
-      endDate: "2024-06-04",
-      constituency: "Mumbai North",
-      totalVoters: 1850000,
-      votedCount: 982000
-    },
-    {
-      id: "state-assembly-2024",
-      title: "Maharashtra Assembly Elections",
-      type: "State", 
-      status: "Upcoming",
-      endDate: "2024-11-15",
-      constituency: "Bandra East",
-      totalVoters: 245000,
-      votedCount: 0
-    },
-    {
-      id: "municipal-2024",
-      title: "Mumbai Municipal Corporation",
-      type: "Local",
-      status: "Active",
-      endDate: "2024-07-20",
-      constituency: "Ward 184",
-      totalVoters: 85000,
-      votedCount: 45000
+  useEffect(() => {
+    if (selectedElection) {
+      fetchCandidates(selectedElection);
     }
-  ];
+  }, [selectedElection]);
 
-  const candidates = [
-    { name: "Rajesh Kumar", party: "Indian National Congress", symbol: "🖐️", manifesto: "Focus on employment and healthcare" },
-    { name: "Priya Sharma", party: "Bharatiya Janata Party", symbol: "🪷", manifesto: "Digital India and infrastructure development" },
-    { name: "Mohammed Ali", party: "Aam Aadmi Party", symbol: "🧹", manifesto: "Education reform and anti-corruption" },
-    { name: "Sunita Devi", party: "Independent", symbol: "🏠", manifesto: "Women empowerment and local development" }
-  ];
+  // Get active election for voting
+  const activeElection = elections.find(e => e.status === 'Active');
 
-  const handleVote = (candidate: any) => {
-    const hash = `0x${Math.random().toString(16).substr(2, 40)}`;
-    setVoteHash(hash);
-    setVoteCast(true);
-    
-    toast({
-      title: "Vote Cast Successfully!",
-      description: `Your vote has been recorded on the blockchain. Transaction hash: ${hash.substring(0, 20)}...`,
-    });
+  useEffect(() => {
+    if (activeElection && !selectedElection) {
+      setSelectedElection(activeElection.id);
+    }
+  }, [activeElection, selectedElection]);
+
+  // Filter candidates for selected election
+  const electionCandidates = candidates.filter(c => c.election_id === selectedElection);
+
+  const handleVote = async (candidate: any) => {
+    if (!selectedElection) return;
+
+    const result = await castVote(selectedElection, candidate.id);
+    if (result?.success) {
+      setVoteHash(result.vote_hash);
+      setVoteCast(true);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -74,6 +56,25 @@ const UserDashboard = () => {
       default: return "bg-gray-500";
     }
   };
+
+  const getUserVote = () => {
+    return votes.find(vote => vote.voter_id === profile?.id && vote.election_id === selectedElection);
+  };
+
+  const userVote = getUserVote();
+
+  if (electionsLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-saffron-50 via-white to-green-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-indian-gradient rounded-full flex items-center justify-center mx-auto mb-4 animate-spin">
+            <Vote className="h-8 w-8 text-white" />
+          </div>
+          <p className="text-navy-600">Loading election data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-saffron-50 via-white to-green-50">
@@ -87,7 +88,7 @@ const UserDashboard = () => {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-navy-900">Voter Dashboard</h1>
-                <p className="text-sm text-navy-600">ID: VTR-2024-A7X9</p>
+                <p className="text-sm text-navy-600">ID: {profile?.voter_id || 'VTR-' + profile?.id?.substring(0, 8)}</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -95,12 +96,10 @@ const UserDashboard = () => {
                 <Shield className="h-3 w-3 mr-1" />
                 Verified Voter
               </Badge>
-              <Link to="/">
-                <Button variant="outline" size="sm">
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Logout
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" onClick={signOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
             </div>
           </div>
         </div>
@@ -144,21 +143,21 @@ const UserDashboard = () => {
                     </div>
                     <div className="flex items-center">
                       <Calendar className="h-4 w-4 mr-2" />
-                      Ends: {election.endDate}
+                      Ends: {new Date(election.end_date).toLocaleDateString()}
                     </div>
                     <div className="flex items-center">
                       <Users className="h-4 w-4 mr-2" />
-                      {election.totalVoters.toLocaleString()} voters
+                      {election.total_voters.toLocaleString()} voters
                     </div>
                   </div>
 
                   {election.status === "Active" && (
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span>Turnout</span>
-                        <span>{Math.round((election.votedCount / election.totalVoters) * 100)}%</span>
+                        <span>Votes Cast</span>
+                        <span>{votes.filter(v => v.election_id === election.id).length}</span>
                       </div>
-                      <Progress value={(election.votedCount / election.totalVoters) * 100} className="h-2" />
+                      <Progress value={Math.min((votes.filter(v => v.election_id === election.id).length / election.total_voters) * 100, 100)} className="h-2" />
                     </div>
                   )}
                 </Card>
@@ -170,10 +169,12 @@ const UserDashboard = () => {
           <TabsContent value="vote" className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-navy-900 mb-2">Cast Your Vote</h2>
-              <p className="text-navy-600">Select your preferred candidate for Lok Sabha Elections 2024</p>
+              <p className="text-navy-600">
+                {activeElection ? `Select your preferred candidate for ${activeElection.title}` : 'No active elections available'}
+              </p>
             </div>
 
-            {voteCast ? (
+            {userVote || voteCast ? (
               <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
                 <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-vote-cast">
                   <CheckCircle className="h-8 w-8 text-white" />
@@ -182,13 +183,13 @@ const UserDashboard = () => {
                 <p className="text-navy-600 mb-6">Your vote has been securely recorded on the blockchain</p>
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <p className="text-sm font-medium text-green-800 mb-2">Blockchain Transaction Hash:</p>
-                  <p className="font-mono text-green-900 break-all">{voteHash}</p>
+                  <p className="font-mono text-green-900 break-all">{userVote?.vote_hash || voteHash}</p>
                 </div>
               </Card>
-            ) : (
+            ) : electionCandidates.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                {candidates.map((candidate, index) => (
-                  <Card key={index} className="glass-card border-0 p-6 vote-card-hover">
+                {electionCandidates.map((candidate) => (
+                  <Card key={candidate.id} className="glass-card border-0 p-6 vote-card-hover">
                     <div className="text-center mb-4">
                       <div className="text-4xl mb-2">{candidate.symbol}</div>
                       <h3 className="text-xl font-bold text-navy-900">{candidate.name}</h3>
@@ -207,6 +208,14 @@ const UserDashboard = () => {
                   </Card>
                 ))}
               </div>
+            ) : (
+              <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
+                <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Vote className="h-8 w-8 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-navy-900 mb-2">No Active Elections</h3>
+                <p className="text-navy-600">There are currently no active elections available for voting.</p>
+              </Card>
             )}
           </TabsContent>
 
@@ -218,7 +227,7 @@ const UserDashboard = () => {
             </div>
 
             <Card className="glass-card border-0 p-8 max-w-3xl mx-auto">
-              {voteHash ? (
+              {userVote || voteHash ? (
                 <div className="space-y-6">
                   <div className="text-center">
                     <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-secure-glow">
@@ -233,9 +242,9 @@ const UserDashboard = () => {
                       <div>
                         <h4 className="font-semibold text-navy-900 mb-2">Transaction Details</h4>
                         <div className="space-y-2 text-sm">
-                          <div><span className="text-navy-600">Hash:</span> <span className="font-mono">{voteHash.substring(0, 20)}...</span></div>
-                          <div><span className="text-navy-600">Block:</span> <span className="font-mono">8,456,789</span></div>
-                          <div><span className="text-navy-600">Timestamp:</span> <span>{new Date().toLocaleString()}</span></div>
+                          <div><span className="text-navy-600">Hash:</span> <span className="font-mono">{(userVote?.vote_hash || voteHash)?.substring(0, 20)}...</span></div>
+                          <div><span className="text-navy-600">Block:</span> <span className="font-mono">{userVote?.block_hash?.substring(0, 10)}...</span></div>
+                          <div><span className="text-navy-600">Timestamp:</span> <span>{userVote ? new Date(userVote.timestamp).toLocaleString() : new Date().toLocaleString()}</span></div>
                           <div><span className="text-navy-600">Status:</span> <Badge className="bg-green-500">Confirmed</Badge></div>
                         </div>
                       </div>
@@ -269,37 +278,42 @@ const UserDashboard = () => {
             </div>
 
             <Card className="glass-card border-0 p-8 max-w-4xl mx-auto">
-              <h3 className="text-xl font-bold text-navy-900 mb-6">Lok Sabha Elections 2024 - Mumbai North</h3>
-              
-              <div className="space-y-4">
-                {candidates.map((candidate, index) => {
-                  const votes = Math.floor(Math.random() * 200000) + 50000;
-                  const percentage = ((votes / 982000) * 100).toFixed(1);
+              {activeElection && (
+                <>
+                  <h3 className="text-xl font-bold text-navy-900 mb-6">{activeElection.title} - {activeElection.constituency}</h3>
                   
-                  return (
-                    <div key={index} className="flex items-center justify-between p-4 bg-white/50 rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <span className="text-2xl">{candidate.symbol}</span>
-                        <div>
-                          <h4 className="font-semibold text-navy-900">{candidate.name}</h4>
-                          <p className="text-sm text-navy-600">{candidate.party}</p>
+                  <div className="space-y-4">
+                    {electionCandidates.map((candidate) => {
+                      const candidateVotes = votes.filter(v => v.candidate_id === candidate.id).length;
+                      const totalVotes = votes.filter(v => v.election_id === activeElection.id).length;
+                      const percentage = totalVotes > 0 ? ((candidateVotes / totalVotes) * 100).toFixed(1) : '0.0';
+                      
+                      return (
+                        <div key={candidate.id} className="flex items-center justify-between p-4 bg-white/50 rounded-lg">
+                          <div className="flex items-center space-x-4">
+                            <span className="text-2xl">{candidate.symbol}</span>
+                            <div>
+                              <h4 className="font-semibold text-navy-900">{candidate.name}</h4>
+                              <p className="text-sm text-navy-600">{candidate.party}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-navy-900">{candidateVotes.toLocaleString()}</div>
+                            <div className="text-sm text-navy-600">{percentage}%</div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-navy-900">{votes.toLocaleString()}</div>
-                        <div className="text-sm text-navy-600">{percentage}%</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
 
-              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center justify-center">
-                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                  <span className="text-green-800 font-medium">Results verified by blockchain consensus</span>
-                </div>
-              </div>
+                  <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center justify-center">
+                      <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                      <span className="text-green-800 font-medium">Results verified by blockchain consensus</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </Card>
           </TabsContent>
         </Tabs>

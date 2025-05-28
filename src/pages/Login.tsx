@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -9,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Vote, Shield, Mail, Lock, User, ArrowLeft } from "lucide-react";
 import { useOTP } from "@/hooks/useOTP";
+import { supabase } from "@/lib/supabase";
 
 const Login = () => {
   const [userForm, setUserForm] = useState({ email: "", password: "", otp: "" });
@@ -49,10 +49,47 @@ const Login = () => {
     const isValid = await verifyOTP(email, otp);
     
     if (isValid) {
-      if (userType === 'user') {
-        navigate('/user-dashboard');
-      } else {
-        navigate('/admin-dashboard');
+      // Create user profile in database
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: userType === 'user' ? userForm.password : adminForm.password,
+        });
+
+        if (error && error.message.includes('Invalid login credentials')) {
+          // User doesn't exist, create them
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email: email,
+            password: userType === 'user' ? userForm.password : adminForm.password,
+          });
+
+          if (signUpError) {
+            console.error('Sign up error:', signUpError);
+            return;
+          }
+
+          if (signUpData.user) {
+            // Create profile
+            await supabase.from('profiles').insert([{
+              id: signUpData.user.id,
+              email: email,
+              user_type: userType === 'user' ? 'voter' : 'admin',
+              verified: true
+            }]);
+          }
+        } else if (error) {
+          console.error('Sign in error:', error);
+          return;
+        }
+
+        // Navigate to appropriate dashboard
+        if (userType === 'user') {
+          navigate('/user-dashboard');
+        } else {
+          navigate('/admin-dashboard');
+        }
+      } catch (error) {
+        console.error('Authentication error:', error);
       }
     }
   };
