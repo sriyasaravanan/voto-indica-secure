@@ -42,8 +42,8 @@ const UserDashboard = () => {
     if (!selectedElection) return;
 
     const result = await castVote(selectedElection, candidate.id);
-    if (result?.success) {
-      setVoteHash(result.vote_hash);
+    if (result && result.success) {
+      setVoteHash(result.vote_hash || '');
       setVoteCast(true);
     }
   };

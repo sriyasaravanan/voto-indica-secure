@@ -24,6 +24,15 @@ export interface Candidate {
   manifesto: string;
 }
 
+interface CastVoteResponse {
+  success: boolean;
+  vote_hash?: string;
+  block_hash?: string;
+  block_number?: number;
+  transaction_id?: string;
+  error?: string;
+}
+
 export const useElections = () => {
   const [elections, setElections] = useState<Election[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -38,7 +47,21 @@ export const useElections = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setElections(data || []);
+      
+      if (data) {
+        const typedElections: Election[] = data.map(election => ({
+          id: election.id,
+          title: election.title,
+          type: election.type as 'National' | 'State' | 'Local',
+          constituency: election.constituency,
+          start_date: election.start_date,
+          end_date: election.end_date,
+          status: election.status as 'Upcoming' | 'Active' | 'Completed',
+          total_voters: election.total_voters,
+          created_at: election.created_at
+        }));
+        setElections(typedElections);
+      }
     } catch (error) {
       console.error('Error fetching elections:', error);
       toast({
@@ -108,16 +131,18 @@ export const useElections = () => {
 
       if (error) throw error;
 
-      if (data?.success) {
+      const response = data as CastVoteResponse;
+
+      if (response?.success) {
         toast({
           title: "Vote Cast Successfully!",
-          description: `Your vote has been recorded on the blockchain. Transaction hash: ${data.vote_hash.substring(0, 20)}...`,
+          description: `Your vote has been recorded on the blockchain. Transaction hash: ${response.vote_hash?.substring(0, 20)}...`,
         });
-        return data;
+        return response;
       } else {
         toast({
           title: "Error",
-          description: data?.error || "Failed to cast vote",
+          description: response?.error || "Failed to cast vote",
           variant: "destructive"
         });
         return null;

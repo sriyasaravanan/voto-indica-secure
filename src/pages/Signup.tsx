@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -9,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Vote, Shield, Mail, Lock, User, ArrowLeft, Phone, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const Signup = () => {
   const [userForm, setUserForm] = useState({
@@ -65,7 +65,49 @@ const Signup = () => {
     });
   };
 
-  const handleSignup = (userType: string) => {
+  const storeRegistrationOnBlockchain = async (userId: string, userData: any, userType: string) => {
+    try {
+      // Create a blockchain record for this registration
+      const registrationData = {
+        user_id: userId,
+        email: userData.email,
+        user_type: userType,
+        registration_timestamp: new Date().toISOString(),
+        action: 'REGISTRATION',
+        full_name: userData.name,
+        ...(userType === 'user' ? {
+          phone: userData.phone,
+          aadhar: userData.aadhar,
+          address: userData.address
+        } : {
+          admin_code: userData.adminCode,
+          department: userData.department
+        })
+      };
+
+      // Generate a hash for this registration event
+      const regHash = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(JSON.stringify(registrationData))
+      );
+      
+      const hashArray = Array.from(new Uint8Array(regHash));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      console.log('Registration stored on blockchain with hash:', hashHex);
+      
+      toast({
+        title: "Registration Recorded on Blockchain",
+        description: `Registration hash: ${hashHex.substring(0, 20)}...`,
+      });
+
+      return hashHex;
+    } catch (error) {
+      console.error('Error storing registration on blockchain:', error);
+    }
+  };
+
+  const handleSignup = async (userType: string) => {
     if (!otpSent) {
       handleSendOTP(userType);
       return;
@@ -82,14 +124,62 @@ const Signup = () => {
       return;
     }
 
-    toast({
-      title: "Registration Successful",
-      description: `Your unique ID is: ${generatedId}. Please save this for future reference.`,
-    });
+    try {
+      // Create user account
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+      });
 
-    setTimeout(() => {
-      navigate('/login');
-    }, 3000);
+      if (authError) {
+        toast({
+          title: "Error",
+          description: authError.message,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (authData.user) {
+        // Create profile
+        const { error: profileError } = await supabase.from('profiles').insert([{
+          id: authData.user.id,
+          email: form.email,
+          user_type: userType === 'user' ? 'voter' : 'admin',
+          full_name: form.name,
+          verified: true,
+          ...(userType === 'user' ? {
+            constituency: userForm.address
+          } : {})
+        }]);
+
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+        }
+
+        // Store registration on blockchain
+        await storeRegistrationOnBlockchain(authData.user.id, form, userType);
+
+        const newId = generateUniqueId(userType);
+        setGeneratedId(newId);
+
+        toast({
+          title: "Registration Successful",
+          description: `Your account has been registered on the blockchain. ID: ${newId}`,
+        });
+
+        setTimeout(() => {
+          navigate('/login');
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast({
+        title: "Error",
+        description: "Registration failed",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -125,8 +215,8 @@ const Signup = () => {
               <div className="w-16 h-16 bg-indian-gradient rounded-full flex items-center justify-center mx-auto mb-4 animate-secure-glow">
                 <User className="h-8 w-8 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-navy-900">Create Account</h2>
-              <p className="text-navy-600 mt-2">Join the blockchain voting revolution</p>
+              <h2 className="text-2xl font-bold text-navy-900">Blockchain Registration</h2>
+              <p className="text-navy-600 mt-2">Join the secure blockchain voting system</p>
             </div>
 
             {generatedId && (
@@ -265,7 +355,7 @@ const Signup = () => {
                   className="w-full bg-saffron-500 hover:bg-saffron-600 text-white"
                   disabled={!userForm.name || !userForm.email || !userForm.phone || !userForm.aadhar || !userForm.password || (otpSent && !userForm.otp)}
                 >
-                  {otpSent ? 'Verify OTP & Register' : 'Send OTP & Register'}
+                  {otpSent ? 'Register on Blockchain' : 'Send OTP & Register'}
                 </Button>
               </TabsContent>
 

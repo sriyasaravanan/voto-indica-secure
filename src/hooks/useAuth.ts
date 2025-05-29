@@ -31,8 +31,20 @@ export const useAuth = () => {
         throw error;
       }
 
-      setProfile(data);
-      return data;
+      if (data) {
+        const profile: UserProfile = {
+          id: data.id,
+          email: data.email,
+          user_type: data.user_type as 'voter' | 'admin',
+          voter_id: data.voter_id,
+          full_name: data.full_name,
+          constituency: data.constituency,
+          verified: data.verified
+        };
+        setProfile(profile);
+        return profile;
+      }
+      return null;
     } catch (error) {
       console.error('Error fetching profile:', error);
       return null;
@@ -54,8 +66,20 @@ export const useAuth = () => {
 
       if (error) throw error;
 
-      setProfile(data);
-      return data;
+      if (data) {
+        const profile: UserProfile = {
+          id: data.id,
+          email: data.email,
+          user_type: data.user_type as 'voter' | 'admin',
+          voter_id: data.voter_id,
+          full_name: data.full_name,
+          constituency: data.constituency,
+          verified: data.verified
+        };
+        setProfile(profile);
+        return profile;
+      }
+      return null;
     } catch (error) {
       console.error('Error creating profile:', error);
       toast({

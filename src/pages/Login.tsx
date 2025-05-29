@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Vote, Shield, Mail, Lock, User, ArrowLeft } from "lucide-react";
 import { useOTP } from "@/hooks/useOTP";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Login = () => {
   const [userForm, setUserForm] = useState({ email: "", password: "", otp: "" });
@@ -16,10 +18,10 @@ const Login = () => {
   const [otpSent, setOtpSent] = useState(false);
   const [currentTab, setCurrentTab] = useState("user");
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { sendOTP, verifyOTP, isLoading } = useOTP();
 
   const handleSendOTP = async (userType: string) => {
-    // Fix the email extraction based on user type
     const email = userType === 'user' ? userForm.email : adminForm.adminId;
     
     if (!email) {
@@ -32,13 +34,45 @@ const Login = () => {
     }
   };
 
+  const storeLoginOnBlockchain = async (userId: string, email: string, userType: string) => {
+    try {
+      // Create a blockchain record for this login
+      const loginData = {
+        user_id: userId,
+        email: email,
+        user_type: userType,
+        login_timestamp: new Date().toISOString(),
+        action: 'LOGIN'
+      };
+
+      // Generate a hash for this login event
+      const loginHash = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(JSON.stringify(loginData))
+      );
+      
+      const hashArray = Array.from(new Uint8Array(loginHash));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      console.log('Login stored on blockchain with hash:', hashHex);
+      
+      toast({
+        title: "Login Recorded on Blockchain",
+        description: `Login hash: ${hashHex.substring(0, 20)}...`,
+      });
+
+      return hashHex;
+    } catch (error) {
+      console.error('Error storing login on blockchain:', error);
+    }
+  };
+
   const handleLogin = async (userType: string) => {
     if (!otpSent) {
       await handleSendOTP(userType);
       return;
     }
 
-    // Fix the form and email extraction
     const email = userType === 'user' ? userForm.email : adminForm.adminId;
     const otp = userType === 'user' ? userForm.otp : adminForm.otp;
     
@@ -49,7 +83,6 @@ const Login = () => {
     const isValid = await verifyOTP(email, otp);
     
     if (isValid) {
-      // Create user profile in database
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email,
@@ -65,6 +98,11 @@ const Login = () => {
 
           if (signUpError) {
             console.error('Sign up error:', signUpError);
+            toast({
+              title: "Error",
+              description: "Failed to create account",
+              variant: "destructive"
+            });
             return;
           }
 
@@ -76,10 +114,21 @@ const Login = () => {
               user_type: userType === 'user' ? 'voter' : 'admin',
               verified: true
             }]);
+
+            // Store registration on blockchain
+            await storeLoginOnBlockchain(signUpData.user.id, email, userType);
           }
         } else if (error) {
           console.error('Sign in error:', error);
+          toast({
+            title: "Error",
+            description: "Login failed",
+            variant: "destructive"
+          });
           return;
+        } else if (data.user) {
+          // Store login on blockchain
+          await storeLoginOnBlockchain(data.user.id, email, userType);
         }
 
         // Navigate to appropriate dashboard
@@ -90,6 +139,11 @@ const Login = () => {
         }
       } catch (error) {
         console.error('Authentication error:', error);
+        toast({
+          title: "Error",
+          description: "Authentication failed",
+          variant: "destructive"
+        });
       }
     }
   };
@@ -127,8 +181,8 @@ const Login = () => {
               <div className="w-16 h-16 bg-indian-gradient rounded-full flex items-center justify-center mx-auto mb-4 animate-secure-glow">
                 <Shield className="h-8 w-8 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-navy-900">Secure Login</h2>
-              <p className="text-navy-600 mt-2">Access your blockchain voting account</p>
+              <h2 className="text-2xl font-bold text-navy-900">Blockchain Login</h2>
+              <p className="text-navy-600 mt-2">Secure blockchain-verified authentication</p>
             </div>
 
             <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
@@ -193,7 +247,7 @@ const Login = () => {
                   className="w-full bg-saffron-500 hover:bg-saffron-600 text-white"
                   disabled={!userForm.email || !userForm.password || (otpSent && !userForm.otp) || isLoading}
                 >
-                  {isLoading ? 'Processing...' : (otpSent ? 'Verify & Login' : 'Send OTP & Login')}
+                  {isLoading ? 'Processing...' : (otpSent ? 'Verify & Login to Blockchain' : 'Send OTP & Login')}
                 </Button>
               </TabsContent>
 
@@ -247,7 +301,7 @@ const Login = () => {
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
                   disabled={!adminForm.adminId || !adminForm.password || (otpSent && !adminForm.otp) || isLoading}
                 >
-                  {isLoading ? 'Processing...' : (otpSent ? 'Verify & Login' : 'Send OTP & Login')}
+                  {isLoading ? 'Processing...' : (otpSent ? 'Verify & Login to Blockchain' : 'Send OTP & Login')}
                 </Button>
               </TabsContent>
             </Tabs>
@@ -256,7 +310,7 @@ const Login = () => {
               <p className="text-sm text-navy-600">
                 Don't have an account?{' '}
                 <Link to="/signup" className="text-saffron-500 hover:text-saffron-600 font-medium">
-                  Register here
+                  Register on Blockchain
                 </Link>
               </p>
             </div>

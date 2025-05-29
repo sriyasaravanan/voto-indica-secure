@@ -16,7 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 const AdminDashboard = () => {
   const [newElection, setNewElection] = useState({
     title: "",
-    type: "National" as const,
+    type: "National" as 'National' | 'State' | 'Local',
     constituency: "",
     start_date: "",
     end_date: "",
