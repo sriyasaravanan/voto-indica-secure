@@ -131,7 +131,14 @@ export const useElections = () => {
 
       if (error) throw error;
 
-      const response = data as CastVoteResponse;
+      // Safely handle the response type conversion
+      let response: CastVoteResponse;
+      
+      if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+        response = data as CastVoteResponse;
+      } else {
+        response = { success: false, error: 'Invalid response format' };
+      }
 
       if (response?.success) {
         toast({
