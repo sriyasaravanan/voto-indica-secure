@@ -93,75 +93,108 @@ const Login = () => {
       return;
     }
 
+    if (!password) {
+      toast({
+        title: "Error",
+        description: "Please enter your password",
+        variant: "destructive"
+      });
+      return;
+    }
+
     const isValid = await verifyOTP(email, otp);
     
     if (isValid) {
       try {
-        // First try to sign in
+        // First try to sign in with existing credentials
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: email,
           password: password,
         });
 
-        if (signInError && (signInError.message.includes('Invalid login credentials') || signInError.message.includes('Email not confirmed'))) {
-          // User doesn't exist or email not confirmed, create them
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email: email,
-            password: password,
-            options: {
-              emailRedirectTo: undefined, // Disable email confirmation
-            }
-          });
+        if (signInError) {
+          // Check if it's an invalid credentials error
+          if (signInError.message.includes('Invalid login credentials')) {
+            // Try to create a new account since the user verified their email with OTP
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: email,
+              password: password,
+              options: {
+                emailRedirectTo: undefined, // Disable email confirmation since we verified with OTP
+              }
+            });
 
-          if (signUpError) {
-            console.error('Sign up error:', signUpError);
+            if (signUpError) {
+              console.error('Sign up error:', signUpError);
+              toast({
+                title: "Authentication Error",
+                description: signUpError.message || "Failed to create account",
+                variant: "destructive"
+              });
+              return;
+            }
+
+            if (signUpData.user) {
+              // Create profile for new user
+              await createProfile(signUpData.user.id, email, userType === 'user' ? 'voter' : 'admin');
+              
+              // Store registration on blockchain
+              await storeLoginOnBlockchain(signUpData.user.id, email, userType);
+              
+              toast({
+                title: "Account Created Successfully",
+                description: "You have been logged in",
+              });
+
+              // Navigate to appropriate dashboard
+              if (userType === 'user') {
+                navigate('/user-dashboard');
+              } else {
+                navigate('/admin-dashboard');
+              }
+            }
+          } else {
+            // Handle other sign-in errors
+            console.error('Sign in error:', signInError);
             toast({
-              title: "Error",
-              description: "Failed to create account",
+              title: "Login Failed",
+              description: signInError.message || "Please check your credentials and try again",
               variant: "destructive"
             });
-            return;
           }
-
-          if (signUpData.user) {
-            // Create profile
-            await createProfile(signUpData.user.id, email, userType === 'user' ? 'voter' : 'admin');
-            
-            // Store registration on blockchain
-            await storeLoginOnBlockchain(signUpData.user.id, email, userType);
-            
-            toast({
-              title: "Account Created Successfully",
-              description: "You have been logged in",
-            });
-          }
-        } else if (signInError) {
-          console.error('Sign in error:', signInError);
-          toast({
-            title: "Error",
-            description: "Login failed",
-            variant: "destructive"
-          });
           return;
-        } else if (signInData.user) {
-          // Store login on blockchain
-          await storeLoginOnBlockchain(signInData.user.id, email, userType);
         }
 
-        // Navigate to appropriate dashboard
-        if (userType === 'user') {
-          navigate('/user-dashboard');
-        } else {
-          navigate('/admin-dashboard');
+        if (signInData.user) {
+          // Store login on blockchain for existing user
+          await storeLoginOnBlockchain(signInData.user.id, email, userType);
+          
+          toast({
+            title: "Login Successful",
+            description: "Welcome back!",
+          });
+
+          // Navigate to appropriate dashboard
+          if (userType === 'user') {
+            navigate('/user-dashboard');
+          } else {
+            navigate('/admin-dashboard');
+          }
         }
       } catch (error) {
         console.error('Authentication error:', error);
         toast({
           title: "Error",
-          description: "Authentication failed",
+          description: "Authentication failed. Please try again.",
           variant: "destructive"
         });
       }
+    } else {
+      toast({
+        title: "Invalid OTP",
+        description: "The OTP code is incorrect or has expired. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
