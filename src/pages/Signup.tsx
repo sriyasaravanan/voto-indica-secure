@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Vote, Shield, Mail, Lock, User, ArrowLeft, Phone, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useOTP } from "@/hooks/useOTP";
+import { useAuth } from "@/hooks/useAuth";
 
 const Signup = () => {
   const [userForm, setUserForm] = useState({
@@ -37,6 +39,8 @@ const Signup = () => {
   const [generatedId, setGeneratedId] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { sendOTP, verifyOTP, isLoading } = useOTP();
+  const { createProfile } = useAuth();
 
   const generateUniqueId = (type: string) => {
     const timestamp = Date.now().toString().slice(-6);
@@ -44,7 +48,7 @@ const Signup = () => {
     return type === 'user' ? `VTR-${timestamp}-${random}` : `ADM-${timestamp}-${random}`;
   };
 
-  const handleSendOTP = (userType: string) => {
+  const handleSendOTP = async (userType: string) => {
     const email = userType === 'user' ? userForm.email : adminForm.email;
     if (!email) {
       toast({
@@ -55,14 +59,12 @@ const Signup = () => {
       return;
     }
     
-    setOtpSent(true);
-    const newId = generateUniqueId(userType);
-    setGeneratedId(newId);
-    
-    toast({
-      title: "OTP Sent",
-      description: `Verification code sent to ${email}`,
-    });
+    const success = await sendOTP(email, userType as 'user' | 'admin');
+    if (success) {
+      setOtpSent(true);
+      const newId = generateUniqueId(userType);
+      setGeneratedId(newId);
+    }
   };
 
   const storeRegistrationOnBlockchain = async (userId: string, userData: any, userType: string) => {
@@ -109,7 +111,7 @@ const Signup = () => {
 
   const handleSignup = async (userType: string) => {
     if (!otpSent) {
-      handleSendOTP(userType);
+      await handleSendOTP(userType);
       return;
     }
 
@@ -124,11 +126,20 @@ const Signup = () => {
       return;
     }
 
+    const isValid = await verifyOTP(form.email, form.otp);
+    
+    if (!isValid) {
+      return;
+    }
+
     try {
       // Create user account
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
+        options: {
+          emailRedirectTo: undefined, // Disable email confirmation
+        }
       });
 
       if (authError) {
@@ -142,20 +153,7 @@ const Signup = () => {
 
       if (authData.user) {
         // Create profile
-        const { error: profileError } = await supabase.from('profiles').insert([{
-          id: authData.user.id,
-          email: form.email,
-          user_type: userType === 'user' ? 'voter' : 'admin',
-          full_name: form.name,
-          verified: true,
-          ...(userType === 'user' ? {
-            constituency: userForm.address
-          } : {})
-        }]);
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-        }
+        await createProfile(authData.user.id, form.email, userType === 'user' ? 'voter' : 'admin', form);
 
         // Store registration on blockchain
         await storeRegistrationOnBlockchain(authData.user.id, form, userType);
@@ -353,9 +351,9 @@ const Signup = () => {
                 <Button 
                   onClick={() => handleSignup('user')}
                   className="w-full bg-saffron-500 hover:bg-saffron-600 text-white"
-                  disabled={!userForm.name || !userForm.email || !userForm.phone || !userForm.aadhar || !userForm.password || (otpSent && !userForm.otp)}
+                  disabled={!userForm.name || !userForm.email || !userForm.phone || !userForm.aadhar || !userForm.password || (otpSent && !userForm.otp) || isLoading}
                 >
-                  {otpSent ? 'Register on Blockchain' : 'Send OTP & Register'}
+                  {isLoading ? 'Processing...' : (otpSent ? 'Register on Blockchain' : 'Send OTP & Register')}
                 </Button>
               </TabsContent>
 
@@ -458,9 +456,9 @@ const Signup = () => {
                 <Button 
                   onClick={() => handleSignup('admin')}
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  disabled={!adminForm.name || !adminForm.email || !adminForm.adminCode || !adminForm.password || (otpSent && !adminForm.otp)}
+                  disabled={!adminForm.name || !adminForm.email || !adminForm.adminCode || !adminForm.password || (otpSent && !adminForm.otp) || isLoading}
                 >
-                  {otpSent ? 'Verify OTP & Register' : 'Send OTP & Register'}
+                  {isLoading ? 'Processing...' : (otpSent ? 'Verify OTP & Register' : 'Send OTP & Register')}
                 </Button>
               </TabsContent>
             </Tabs>

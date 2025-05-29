@@ -51,16 +51,20 @@ export const useAuth = () => {
     }
   };
 
-  const createProfile = async (userId: string, email: string, userType: 'voter' | 'admin') => {
+  const createProfile = async (userId: string, email: string, userType: 'voter' | 'admin', additionalData?: any) => {
     try {
+      const profileData = {
+        id: userId,
+        email: email,
+        user_type: userType,
+        verified: true,
+        full_name: additionalData?.name || null,
+        constituency: additionalData?.address || null
+      };
+
       const { data, error } = await supabase
         .from('profiles')
-        .insert([{
-          id: userId,
-          email: email,
-          user_type: userType,
-          verified: true
-        }])
+        .upsert([profileData])
         .select()
         .single();
 

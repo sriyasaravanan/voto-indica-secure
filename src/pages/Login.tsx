@@ -11,6 +11,7 @@ import { Vote, Shield, Mail, Lock, User, ArrowLeft } from "lucide-react";
 import { useOTP } from "@/hooks/useOTP";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 const Login = () => {
   const [userForm, setUserForm] = useState({ email: "", password: "", otp: "" });
@@ -20,11 +21,17 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { sendOTP, verifyOTP, isLoading } = useOTP();
+  const { createProfile } = useAuth();
 
   const handleSendOTP = async (userType: string) => {
     const email = userType === 'user' ? userForm.email : adminForm.adminId;
     
     if (!email) {
+      toast({
+        title: "Error",
+        description: "Please enter your email address first",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -75,8 +82,14 @@ const Login = () => {
 
     const email = userType === 'user' ? userForm.email : adminForm.adminId;
     const otp = userType === 'user' ? userForm.otp : adminForm.otp;
+    const password = userType === 'user' ? userForm.password : adminForm.password;
     
     if (!otp) {
+      toast({
+        title: "Error",
+        description: "Please enter the OTP code",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -84,16 +97,20 @@ const Login = () => {
     
     if (isValid) {
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        // First try to sign in
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: email,
-          password: userType === 'user' ? userForm.password : adminForm.password,
+          password: password,
         });
 
-        if (error && error.message.includes('Invalid login credentials')) {
-          // User doesn't exist, create them
+        if (signInError && (signInError.message.includes('Invalid login credentials') || signInError.message.includes('Email not confirmed'))) {
+          // User doesn't exist or email not confirmed, create them
           const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: email,
-            password: userType === 'user' ? userForm.password : adminForm.password,
+            password: password,
+            options: {
+              emailRedirectTo: undefined, // Disable email confirmation
+            }
           });
 
           if (signUpError) {
@@ -108,27 +125,27 @@ const Login = () => {
 
           if (signUpData.user) {
             // Create profile
-            await supabase.from('profiles').insert([{
-              id: signUpData.user.id,
-              email: email,
-              user_type: userType === 'user' ? 'voter' : 'admin',
-              verified: true
-            }]);
-
+            await createProfile(signUpData.user.id, email, userType === 'user' ? 'voter' : 'admin');
+            
             // Store registration on blockchain
             await storeLoginOnBlockchain(signUpData.user.id, email, userType);
+            
+            toast({
+              title: "Account Created Successfully",
+              description: "You have been logged in",
+            });
           }
-        } else if (error) {
-          console.error('Sign in error:', error);
+        } else if (signInError) {
+          console.error('Sign in error:', signInError);
           toast({
             title: "Error",
             description: "Login failed",
             variant: "destructive"
           });
           return;
-        } else if (data.user) {
+        } else if (signInData.user) {
           // Store login on blockchain
-          await storeLoginOnBlockchain(data.user.id, email, userType);
+          await storeLoginOnBlockchain(signInData.user.id, email, userType);
         }
 
         // Navigate to appropriate dashboard
