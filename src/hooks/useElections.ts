@@ -135,7 +135,15 @@ export const useElections = () => {
       let response: CastVoteResponse;
       
       if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
-        response = data as CastVoteResponse;
+        // Convert unknown object to CastVoteResponse by checking properties
+        response = {
+          success: Boolean(data.success),
+          vote_hash: typeof data.vote_hash === 'string' ? data.vote_hash : undefined,
+          block_hash: typeof data.block_hash === 'string' ? data.block_hash : undefined,
+          block_number: typeof data.block_number === 'number' ? data.block_number : undefined,
+          transaction_id: typeof data.transaction_id === 'string' ? data.transaction_id : undefined,
+          error: typeof data.error === 'string' ? data.error : undefined
+        };
       } else {
         response = { success: false, error: 'Invalid response format' };
       }
