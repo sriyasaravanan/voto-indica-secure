@@ -1,239 +1,37 @@
 
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Vote, Shield, Mail, Lock, User, ArrowLeft } from "lucide-react";
-import { useOTP } from "@/hooks/useOTP";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
+import { User, Shield } from "lucide-react";
+import { AuthHeader } from "@/components/auth/AuthHeader";
+import { LoginFormHeader } from "@/components/auth/LoginFormHeader";
+import { UserLoginForm } from "@/components/auth/UserLoginForm";
+import { AdminLoginForm } from "@/components/auth/AdminLoginForm";
+import { useLoginLogic } from "@/hooks/useLoginLogic";
 
 const Login = () => {
-  const [userForm, setUserForm] = useState({ email: "", password: "", otp: "" });
-  const [adminForm, setAdminForm] = useState({ adminId: "", password: "", otp: "" });
-  const [otpSent, setOtpSent] = useState(false);
-  const [currentTab, setCurrentTab] = useState("user");
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  const { sendOTP, verifyOTP, isLoading } = useOTP();
-  const { createProfile } = useAuth();
-
-  const handleSendOTP = async (userType: string) => {
-    const email = userType === 'user' ? userForm.email : adminForm.adminId;
-    
-    if (!email) {
-      toast({
-        title: "Error",
-        description: "Please enter your email address first",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const success = await sendOTP(email, userType as 'user' | 'admin');
-    if (success) {
-      setOtpSent(true);
-    }
-  };
-
-  const storeLoginOnBlockchain = async (userId: string, email: string, userType: string) => {
-    try {
-      // Create a blockchain record for this login
-      const loginData = {
-        user_id: userId,
-        email: email,
-        user_type: userType,
-        login_timestamp: new Date().toISOString(),
-        action: 'LOGIN'
-      };
-
-      // Generate a hash for this login event
-      const loginHash = await crypto.subtle.digest(
-        'SHA-256',
-        new TextEncoder().encode(JSON.stringify(loginData))
-      );
-      
-      const hashArray = Array.from(new Uint8Array(loginHash));
-      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-      console.log('Login stored on blockchain with hash:', hashHex);
-      
-      toast({
-        title: "Login Recorded on Blockchain",
-        description: `Login hash: ${hashHex.substring(0, 20)}...`,
-      });
-
-      return hashHex;
-    } catch (error) {
-      console.error('Error storing login on blockchain:', error);
-    }
-  };
-
-  const handleLogin = async (userType: string) => {
-    if (!otpSent) {
-      await handleSendOTP(userType);
-      return;
-    }
-
-    const email = userType === 'user' ? userForm.email : adminForm.adminId;
-    const otp = userType === 'user' ? userForm.otp : adminForm.otp;
-    const password = userType === 'user' ? userForm.password : adminForm.password;
-    
-    if (!otp) {
-      toast({
-        title: "Error",
-        description: "Please enter the OTP code",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!password) {
-      toast({
-        title: "Error",
-        description: "Please enter your password",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const isValid = await verifyOTP(email, otp);
-    
-    if (isValid) {
-      try {
-        // First try to sign in with existing credentials
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password,
-        });
-
-        if (signInError) {
-          // Check if it's an invalid credentials error
-          if (signInError.message.includes('Invalid login credentials')) {
-            // Try to create a new account since the user verified their email with OTP
-            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-              email: email,
-              password: password,
-              options: {
-                emailRedirectTo: undefined, // Disable email confirmation since we verified with OTP
-              }
-            });
-
-            if (signUpError) {
-              console.error('Sign up error:', signUpError);
-              toast({
-                title: "Authentication Error",
-                description: signUpError.message || "Failed to create account",
-                variant: "destructive"
-              });
-              return;
-            }
-
-            if (signUpData.user) {
-              // Create profile for new user
-              await createProfile(signUpData.user.id, email, userType === 'user' ? 'voter' : 'admin');
-              
-              // Store registration on blockchain
-              await storeLoginOnBlockchain(signUpData.user.id, email, userType);
-              
-              toast({
-                title: "Account Created Successfully",
-                description: "You have been logged in",
-              });
-
-              // Navigate to appropriate dashboard
-              if (userType === 'user') {
-                navigate('/user-dashboard');
-              } else {
-                navigate('/admin-dashboard');
-              }
-            }
-          } else {
-            // Handle other sign-in errors
-            console.error('Sign in error:', signInError);
-            toast({
-              title: "Login Failed",
-              description: signInError.message || "Please check your credentials and try again",
-              variant: "destructive"
-            });
-          }
-          return;
-        }
-
-        if (signInData.user) {
-          // Store login on blockchain for existing user
-          await storeLoginOnBlockchain(signInData.user.id, email, userType);
-          
-          toast({
-            title: "Login Successful",
-            description: "Welcome back!",
-          });
-
-          // Navigate to appropriate dashboard
-          if (userType === 'user') {
-            navigate('/user-dashboard');
-          } else {
-            navigate('/admin-dashboard');
-          }
-        }
-      } catch (error) {
-        console.error('Authentication error:', error);
-        toast({
-          title: "Error",
-          description: "Authentication failed. Please try again.",
-          variant: "destructive"
-        });
-      }
-    } else {
-      toast({
-        title: "Invalid OTP",
-        description: "The OTP code is incorrect or has expired. Please try again.",
-        variant: "destructive"
-      });
-    }
-  };
+  const {
+    userForm,
+    setUserForm,
+    adminForm,
+    setAdminForm,
+    otpSent,
+    currentTab,
+    setCurrentTab,
+    isLoading,
+    handleLogin
+  } = useLoginLogic();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-saffron-50 via-white to-green-50 relative overflow-hidden">
       <div className="absolute inset-0 blockchain-grid opacity-20"></div>
       
-      {/* Header */}
-      <header className="relative z-10 bg-white/80 backdrop-blur-md border-b border-saffron-200">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="flex items-center space-x-4 hover:opacity-80 transition-opacity">
-              <ArrowLeft className="h-5 w-5 text-navy-600" />
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-indian-gradient rounded-lg flex items-center justify-center">
-                  <Vote className="h-4 w-4 text-white" />
-                </div>
-                <span className="text-xl font-bold text-navy-900">भारत वोट</span>
-              </div>
-            </Link>
-            <Badge variant="outline" className="border-green-500 text-green-700">
-              <Shield className="h-3 w-3 mr-1" />
-              Secure Login Portal
-            </Badge>
-          </div>
-        </div>
-      </header>
+      <AuthHeader />
 
-      {/* Login Form */}
       <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-80px)] py-12">
         <div className="w-full max-w-md">
           <Card className="glass-card border-0 p-8">
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-indian-gradient rounded-full flex items-center justify-center mx-auto mb-4 animate-secure-glow">
-                <Shield className="h-8 w-8 text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-navy-900">Blockchain Login</h2>
-              <p className="text-navy-600 mt-2">Secure blockchain-verified authentication</p>
-            </div>
+            <LoginFormHeader />
 
             <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6">
@@ -248,111 +46,23 @@ const Login = () => {
               </TabsList>
 
               <TabsContent value="user" className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="user-email">Email Address</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="user-email"
-                      type="email"
-                      placeholder="your.email@example.com"
-                      className="pl-10"
-                      value={userForm.email}
-                      onChange={(e) => setUserForm({...userForm, email: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="user-password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="user-password"
-                      type="password"
-                      placeholder="Enter your password"
-                      className="pl-10"
-                      value={userForm.password}
-                      onChange={(e) => setUserForm({...userForm, password: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                {otpSent && currentTab === "user" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="user-otp">OTP Verification</Label>
-                    <Input
-                      id="user-otp"
-                      type="text"
-                      placeholder="Enter 6-digit OTP"
-                      maxLength={6}
-                      value={userForm.otp}
-                      onChange={(e) => setUserForm({...userForm, otp: e.target.value})}
-                    />
-                  </div>
-                )}
-
-                <Button 
-                  onClick={() => handleLogin('user')}
-                  className="w-full bg-saffron-500 hover:bg-saffron-600 text-white"
-                  disabled={!userForm.email || !userForm.password || (otpSent && !userForm.otp) || isLoading}
-                >
-                  {isLoading ? 'Processing...' : (otpSent ? 'Verify & Login to Blockchain' : 'Send OTP & Login')}
-                </Button>
+                <UserLoginForm
+                  userForm={userForm}
+                  setUserForm={setUserForm}
+                  otpSent={otpSent && currentTab === "user"}
+                  isLoading={isLoading}
+                  onLogin={() => handleLogin('user')}
+                />
               </TabsContent>
 
               <TabsContent value="admin" className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="admin-id">Admin Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="admin-id"
-                      type="email"
-                      placeholder="admin@example.com"
-                      className="pl-10"
-                      value={adminForm.adminId}
-                      onChange={(e) => setAdminForm({...adminForm, adminId: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="admin-password">Admin Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="admin-password"
-                      type="password"
-                      placeholder="Enter admin password"
-                      className="pl-10"
-                      value={adminForm.password}
-                      onChange={(e) => setAdminForm({...adminForm, password: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                {otpSent && currentTab === "admin" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="admin-otp">OTP Verification</Label>
-                    <Input
-                      id="admin-otp"
-                      type="text"
-                      placeholder="Enter 6-digit OTP"
-                      maxLength={6}
-                      value={adminForm.otp}
-                      onChange={(e) => setAdminForm({...adminForm, otp: e.target.value})}
-                    />
-                  </div>
-                )}
-
-                <Button 
-                  onClick={() => handleLogin('admin')}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  disabled={!adminForm.adminId || !adminForm.password || (otpSent && !adminForm.otp) || isLoading}
-                >
-                  {isLoading ? 'Processing...' : (otpSent ? 'Verify & Login to Blockchain' : 'Send OTP & Login')}
-                </Button>
+                <AdminLoginForm
+                  adminForm={adminForm}
+                  setAdminForm={setAdminForm}
+                  otpSent={otpSent && currentTab === "admin"}
+                  isLoading={isLoading}
+                  onLogin={() => handleLogin('admin')}
+                />
               </TabsContent>
             </Tabs>
 
