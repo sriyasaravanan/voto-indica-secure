@@ -24,33 +24,13 @@ export const useOTP = (): UseOTPReturn => {
 
       if (error) {
         console.error('Error sending OTP:', error);
-        toast({
-          title: "Error",
-          description: "Failed to send OTP. Please try again.",
-          variant: "destructive"
-        });
         return false;
       }
 
       console.log('OTP send response:', data);
-
-      if (data?.success) {
-        return true;
-      } else {
-        toast({
-          title: "Error",
-          description: data?.error || "Failed to send OTP. Please try again.",
-          variant: "destructive"
-        });
-        return false;
-      }
+      return data?.success || false;
     } catch (error) {
       console.error('Error sending OTP:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send OTP. Please try again.",
-        variant: "destructive"
-      });
       return false;
     } finally {
       setIsLoading(false);
@@ -74,12 +54,7 @@ export const useOTP = (): UseOTPReturn => {
       }
 
       console.log('OTP verification result:', data);
-
-      if (data) {
-        return true;
-      } else {
-        return false;
-      }
+      return Boolean(data);
     } catch (error) {
       console.error('Error verifying OTP:', error);
       return false;

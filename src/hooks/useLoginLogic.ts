@@ -14,7 +14,7 @@ export const useLoginLogic = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { sendOTP, verifyOTP, isLoading: otpLoading } = useOTP();
+  const { sendOTP, verifyOTP } = useOTP();
   const { createProfile } = useAuth();
 
   const storeLoginOnBlockchain = async (userId: string, email: string, userType: string) => {
@@ -69,8 +69,9 @@ export const useLoginLogic = () => {
           title: "OTP Sent",
           description: "Please check your email for the verification code",
         });
+        return true;
       }
-      return success;
+      return false;
     } catch (error) {
       console.error('Error sending OTP:', error);
       toast({
@@ -88,15 +89,32 @@ export const useLoginLogic = () => {
     try {
       setIsProcessing(true);
 
-      if (!otpSent) {
-        const otpSent = await handleSendOTP(userType);
+      const email = userType === 'user' ? userForm.email : adminForm.adminId;
+      const password = userType === 'user' ? userForm.password : adminForm.password;
+      const otp = userType === 'user' ? userForm.otp : adminForm.otp;
+
+      if (!email || !password) {
+        toast({
+          title: "Error",
+          description: "Please enter your email and password",
+          variant: "destructive"
+        });
         return;
       }
 
-      const email = userType === 'user' ? userForm.email : adminForm.adminId;
-      const otp = userType === 'user' ? userForm.otp : adminForm.otp;
-      const password = userType === 'user' ? userForm.password : adminForm.password;
-      
+      // If OTP not sent yet, send it first
+      if (!otpSent) {
+        const otpSuccess = await handleSendOTP(userType);
+        if (!otpSuccess) {
+          toast({
+            title: "Error",
+            description: "Failed to send OTP. Please try again.",
+            variant: "destructive"
+          });
+        }
+        return;
+      }
+
       if (!otp) {
         toast({
           title: "Error",
@@ -106,20 +124,9 @@ export const useLoginLogic = () => {
         return;
       }
 
-      if (!password) {
-        toast({
-          title: "Error",
-          description: "Please enter your password",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Verify OTP first
-      console.log('Verifying OTP for:', email);
-      const isValid = await verifyOTP(email, otp);
-      
-      if (!isValid) {
+      // Verify OTP
+      const isValidOTP = await verifyOTP(email, otp);
+      if (!isValidOTP) {
         toast({
           title: "Invalid OTP",
           description: "The OTP code is incorrect or has expired. Please try again.",
@@ -128,29 +135,21 @@ export const useLoginLogic = () => {
         return;
       }
 
-      console.log('OTP verified, attempting authentication...');
-
-      // Try to sign in first
+      // Try to sign in
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: email,
         password: password,
       });
 
       if (signInError) {
-        console.log('Sign in failed, attempting sign up...', signInError.message);
-        
+        // If user doesn't exist, create account
         if (signInError.message.includes('Invalid login credentials')) {
-          // Try to sign up if user doesn't exist
           const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: email,
             password: password,
-            options: {
-              emailRedirectTo: undefined,
-            }
           });
 
           if (signUpError) {
-            console.error('Sign up error:', signUpError);
             toast({
               title: "Authentication Error",
               description: signUpError.message || "Failed to create account",
@@ -160,7 +159,6 @@ export const useLoginLogic = () => {
           }
 
           if (signUpData.user) {
-            console.log('User created successfully:', signUpData.user.id);
             await createProfile(signUpData.user.id, email, userType === 'user' ? 'voter' : 'admin');
             await storeLoginOnBlockchain(signUpData.user.id, email, userType);
             
@@ -169,17 +167,12 @@ export const useLoginLogic = () => {
               description: "You have been logged in",
             });
 
-            // Navigate based on user type
-            if (userType === 'user') {
-              navigate('/user-dashboard');
-            } else {
-              navigate('/admin-dashboard');
-            }
+            navigate(userType === 'user' ? '/user-dashboard' : '/admin-dashboard');
           }
         } else {
           toast({
             title: "Login Failed",
-            description: signInError.message || "Please check your credentials and try again",
+            description: signInError.message || "Please check your credentials",
             variant: "destructive"
           });
         }
@@ -187,7 +180,6 @@ export const useLoginLogic = () => {
       }
 
       if (signInData.user) {
-        console.log('User signed in successfully:', signInData.user.id);
         await storeLoginOnBlockchain(signInData.user.id, email, userType);
         
         toast({
@@ -195,12 +187,7 @@ export const useLoginLogic = () => {
           description: "Welcome back!",
         });
 
-        // Navigate based on user type
-        if (userType === 'user') {
-          navigate('/user-dashboard');
-        } else {
-          navigate('/admin-dashboard');
-        }
+        navigate(userType === 'user' ? '/user-dashboard' : '/admin-dashboard');
       }
     } catch (error) {
       console.error('Authentication error:', error);
@@ -222,7 +209,7 @@ export const useLoginLogic = () => {
     otpSent,
     currentTab,
     setCurrentTab,
-    isLoading: isProcessing || otpLoading,
+    isLoading: isProcessing,
     handleLogin
   };
 };
