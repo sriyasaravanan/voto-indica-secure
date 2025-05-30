@@ -124,24 +124,18 @@ export const useElections = () => {
 
   const castVote = async (electionId: string, candidateId: string) => {
     try {
-      console.log('Casting vote for election:', electionId, 'candidate:', candidateId);
-      
       const { data, error } = await supabase.rpc('cast_vote', {
         p_election_id: electionId,
         p_candidate_id: candidateId
       });
 
-      if (error) {
-        console.error('Cast vote error:', error);
-        throw error;
-      }
-
-      console.log('Cast vote response:', data);
+      if (error) throw error;
 
       // Safely handle the response type conversion
       let response: CastVoteResponse;
       
       if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+        // Convert unknown object to CastVoteResponse by checking properties
         response = {
           success: Boolean(data.success),
           vote_hash: typeof data.vote_hash === 'string' ? data.vote_hash : undefined,
@@ -159,10 +153,6 @@ export const useElections = () => {
           title: "Vote Cast Successfully!",
           description: `Your vote has been recorded on the blockchain. Transaction hash: ${response.vote_hash?.substring(0, 20)}...`,
         });
-        
-        // Refresh data after successful vote
-        await Promise.all([fetchElections(), fetchCandidates()]);
-        
         return response;
       } else {
         toast({

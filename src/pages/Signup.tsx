@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -10,8 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Vote, Shield, Mail, Lock, User, ArrowLeft, Phone, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useOTP } from "@/hooks/useOTP";
-import { useAuth } from "@/hooks/useAuth";
 
 const Signup = () => {
   const [userForm, setUserForm] = useState({
@@ -38,11 +35,8 @@ const Signup = () => {
   const [otpSent, setOtpSent] = useState(false);
   const [currentTab, setCurrentTab] = useState("user");
   const [generatedId, setGeneratedId] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { sendOTP, verifyOTP, isLoading: otpLoading } = useOTP();
-  const { createProfile } = useAuth();
 
   const generateUniqueId = (type: string) => {
     const timestamp = Date.now().toString().slice(-6);
@@ -50,7 +44,7 @@ const Signup = () => {
     return type === 'user' ? `VTR-${timestamp}-${random}` : `ADM-${timestamp}-${random}`;
   };
 
-  const handleSendOTP = async (userType: string) => {
+  const handleSendOTP = (userType: string) => {
     const email = userType === 'user' ? userForm.email : adminForm.email;
     if (!email) {
       toast({
@@ -58,33 +52,17 @@ const Signup = () => {
         description: "Please enter your email address first",
         variant: "destructive"
       });
-      return false;
+      return;
     }
     
-    try {
-      setIsProcessing(true);
-      const success = await sendOTP(email, userType as 'user' | 'admin');
-      if (success) {
-        setOtpSent(true);
-        const newId = generateUniqueId(userType);
-        setGeneratedId(newId);
-        toast({
-          title: "OTP Sent",
-          description: "Please check your email for the verification code",
-        });
-      }
-      return success;
-    } catch (error) {
-      console.error('Error sending OTP:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send OTP. Please try again.",
-        variant: "destructive"
-      });
-      return false;
-    } finally {
-      setIsProcessing(false);
-    }
+    setOtpSent(true);
+    const newId = generateUniqueId(userType);
+    setGeneratedId(newId);
+    
+    toast({
+      title: "OTP Sent",
+      description: `Verification code sent to ${email}`,
+    });
   };
 
   const storeRegistrationOnBlockchain = async (userId: string, userData: any, userType: string) => {
@@ -130,72 +108,54 @@ const Signup = () => {
   };
 
   const handleSignup = async (userType: string) => {
+    if (!otpSent) {
+      handleSendOTP(userType);
+      return;
+    }
+
+    const form = userType === 'user' ? userForm : adminForm;
+    
+    if (form.password !== form.confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      setIsProcessing(true);
-
-      if (!otpSent) {
-        const success = await handleSendOTP(userType);
-        return;
-      }
-
-      const form = userType === 'user' ? userForm : adminForm;
-      
-      if (form.password !== form.confirmPassword) {
-        toast({
-          title: "Error",
-          description: "Passwords do not match",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      if (!form.otp) {
-        toast({
-          title: "Error",
-          description: "Please enter the OTP code",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      console.log('Verifying OTP for signup:', form.email);
-      const isValid = await verifyOTP(form.email, form.otp);
-      
-      if (!isValid) {
-        toast({
-          title: "Invalid OTP",
-          description: "The OTP code is incorrect or has expired. Please try again.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      console.log('OTP verified, creating account...');
-
       // Create user account
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
-        options: {
-          emailRedirectTo: undefined, // Disable email confirmation
-        }
       });
 
       if (authError) {
-        console.error('Signup error:', authError);
         toast({
           title: "Error",
-          description: authError.message || "Failed to create account",
+          description: authError.message,
           variant: "destructive"
         });
         return;
       }
 
       if (authData.user) {
-        console.log('User account created:', authData.user.id);
-
         // Create profile
-        await createProfile(authData.user.id, form.email, userType === 'user' ? 'voter' : 'admin', form);
+        const { error: profileError } = await supabase.from('profiles').insert([{
+          id: authData.user.id,
+          email: form.email,
+          user_type: userType === 'user' ? 'voter' : 'admin',
+          full_name: form.name,
+          verified: true,
+          ...(userType === 'user' ? {
+            constituency: userForm.address
+          } : {})
+        }]);
+
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+        }
 
         // Store registration on blockchain
         await storeRegistrationOnBlockchain(authData.user.id, form, userType);
@@ -216,15 +176,11 @@ const Signup = () => {
       console.error('Registration error:', error);
       toast({
         title: "Error",
-        description: "Registration failed. Please try again.",
+        description: "Registration failed",
         variant: "destructive"
       });
-    } finally {
-      setIsProcessing(false);
     }
   };
-
-  const isLoading = isProcessing || otpLoading;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-saffron-50 via-white to-green-50 relative overflow-hidden">
@@ -397,9 +353,9 @@ const Signup = () => {
                 <Button 
                   onClick={() => handleSignup('user')}
                   className="w-full bg-saffron-500 hover:bg-saffron-600 text-white"
-                  disabled={!userForm.name || !userForm.email || !userForm.phone || !userForm.aadhar || !userForm.password || (otpSent && !userForm.otp) || isLoading}
+                  disabled={!userForm.name || !userForm.email || !userForm.phone || !userForm.aadhar || !userForm.password || (otpSent && !userForm.otp)}
                 >
-                  {isLoading ? 'Processing...' : (otpSent ? 'Register on Blockchain' : 'Send OTP & Register')}
+                  {otpSent ? 'Register on Blockchain' : 'Send OTP & Register'}
                 </Button>
               </TabsContent>
 
@@ -502,9 +458,9 @@ const Signup = () => {
                 <Button 
                   onClick={() => handleSignup('admin')}
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  disabled={!adminForm.name || !adminForm.email || !adminForm.adminCode || !adminForm.password || (otpSent && !adminForm.otp) || isLoading}
+                  disabled={!adminForm.name || !adminForm.email || !adminForm.adminCode || !adminForm.password || (otpSent && !adminForm.otp)}
                 >
-                  {isLoading ? 'Processing...' : (otpSent ? 'Verify OTP & Register' : 'Send OTP & Register')}
+                  {otpSent ? 'Verify OTP & Register' : 'Send OTP & Register'}
                 </Button>
               </TabsContent>
             </Tabs>
