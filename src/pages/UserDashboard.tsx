@@ -16,15 +16,13 @@ const UserDashboard = () => {
   const [voteCast, setVoteCast] = useState(false);
   const [voteHash, setVoteHash] = useState("");
   
-  const { elections, candidates, loading: electionsLoading, fetchCandidates, castVote, fetchElections } = useElections();
-  const { votes, blocks, verifyVoteHash, refreshData } = useBlockchain();
+  const { elections, candidates, loading: electionsLoading, fetchCandidates, castVote } = useElections();
+  const { votes, blocks, verifyVoteHash } = useBlockchain();
   const { profile, signOut } = useAuth();
 
   useEffect(() => {
     if (selectedElection) {
-      console.log('Fetching candidates for election:', selectedElection);
       fetchCandidates(selectedElection);
-      refreshData(selectedElection);
     }
   }, [selectedElection]);
 
@@ -33,7 +31,6 @@ const UserDashboard = () => {
 
   useEffect(() => {
     if (activeElection && !selectedElection) {
-      console.log('Setting active election:', activeElection.id);
       setSelectedElection(activeElection.id);
     }
   }, [activeElection, selectedElection]);
@@ -42,18 +39,12 @@ const UserDashboard = () => {
   const electionCandidates = candidates.filter(c => c.election_id === selectedElection);
 
   const handleVote = async (candidate: any) => {
-    if (!selectedElection) {
-      console.log('No election selected for voting');
-      return;
-    }
+    if (!selectedElection) return;
 
-    console.log('Voting for candidate:', candidate.name, 'in election:', selectedElection);
     const result = await castVote(selectedElection, candidate.id);
     if (result && result.success) {
       setVoteHash(result.vote_hash || '');
       setVoteCast(true);
-      // Refresh blockchain data after voting
-      await refreshData(selectedElection);
     }
   };
 
@@ -67,36 +58,10 @@ const UserDashboard = () => {
   };
 
   const getUserVote = () => {
-    const userVote = votes.find(vote => vote.voter_id === profile?.id && vote.election_id === selectedElection);
-    console.log('User vote found:', !!userVote, 'for election:', selectedElection);
-    return userVote;
+    return votes.find(vote => vote.voter_id === profile?.id && vote.election_id === selectedElection);
   };
 
   const userVote = getUserVote();
-  const hasVoted = userVote || voteCast;
-
-  // Calculate results for the selected election
-  const getElectionResults = () => {
-    if (!selectedElection) return [];
-    
-    const electionVotes = votes.filter(v => v.election_id === selectedElection);
-    const totalVotes = electionVotes.length;
-    
-    console.log('Election votes:', electionVotes.length, 'for election:', selectedElection);
-    
-    return electionCandidates.map(candidate => {
-      const candidateVotes = electionVotes.filter(v => v.candidate_id === candidate.id).length;
-      const percentage = totalVotes > 0 ? ((candidateVotes / totalVotes) * 100).toFixed(1) : '0.0';
-      
-      return {
-        ...candidate,
-        voteCount: candidateVotes,
-        percentage: percentage
-      };
-    }).sort((a, b) => b.voteCount - a.voteCount);
-  };
-
-  const electionResults = getElectionResults();
 
   if (electionsLoading) {
     return (
@@ -209,7 +174,7 @@ const UserDashboard = () => {
               </p>
             </div>
 
-            {hasVoted ? (
+            {userVote || voteCast ? (
               <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
                 <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-vote-cast">
                   <CheckCircle className="h-8 w-8 text-white" />
@@ -313,67 +278,41 @@ const UserDashboard = () => {
             </div>
 
             <Card className="glass-card border-0 p-8 max-w-4xl mx-auto">
-              {selectedElection && activeElection ? (
+              {activeElection && (
                 <>
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-bold text-navy-900">{activeElection.title} - {activeElection.constituency}</h3>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => refreshData(selectedElection)}
-                    >
-                      Refresh Results
-                    </Button>
-                  </div>
+                  <h3 className="text-xl font-bold text-navy-900 mb-6">{activeElection.title} - {activeElection.constituency}</h3>
                   
-                  {electionResults.length > 0 ? (
-                    <div className="space-y-4">
-                      {electionResults.map((candidate, index) => (
+                  <div className="space-y-4">
+                    {electionCandidates.map((candidate) => {
+                      const candidateVotes = votes.filter(v => v.candidate_id === candidate.id).length;
+                      const totalVotes = votes.filter(v => v.election_id === activeElection.id).length;
+                      const percentage = totalVotes > 0 ? ((candidateVotes / totalVotes) * 100).toFixed(1) : '0.0';
+                      
+                      return (
                         <div key={candidate.id} className="flex items-center justify-between p-4 bg-white/50 rounded-lg">
                           <div className="flex items-center space-x-4">
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm font-semibold text-navy-600">#{index + 1}</span>
-                              <span className="text-2xl">{candidate.symbol}</span>
-                            </div>
+                            <span className="text-2xl">{candidate.symbol}</span>
                             <div>
                               <h4 className="font-semibold text-navy-900">{candidate.name}</h4>
                               <p className="text-sm text-navy-600">{candidate.party}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-lg font-bold text-navy-900">{candidate.voteCount.toLocaleString()}</div>
-                            <div className="text-sm text-navy-600">{candidate.percentage}%</div>
+                            <div className="text-lg font-bold text-navy-900">{candidateVotes.toLocaleString()}</div>
+                            <div className="text-sm text-navy-600">{percentage}%</div>
                           </div>
                         </div>
-                      ))}
-                      
-                      <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center justify-center">
-                          <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                          <span className="text-green-800 font-medium">
-                            Results verified by blockchain consensus • Total votes: {votes.filter(v => v.election_id === selectedElection).length}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Vote className="h-8 w-8 text-white" />
-                      </div>
-                      <h3 className="text-xl font-semibold text-navy-900 mb-2">No Votes Cast Yet</h3>
-                      <p className="text-navy-600">Results will appear here once voting begins.</p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Vote className="h-8 w-8 text-white" />
+                      );
+                    })}
                   </div>
-                  <h3 className="text-xl font-semibold text-navy-900 mb-2">No Election Selected</h3>
-                  <p className="text-navy-600">Select an active election to view results.</p>
-                </div>
+
+                  <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center justify-center">
+                      <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                      <span className="text-green-800 font-medium">Results verified by blockchain consensus</span>
+                    </div>
+                  </div>
+                </>
               )}
             </Card>
           </TabsContent>
