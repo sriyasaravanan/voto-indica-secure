@@ -43,6 +43,7 @@ export const useBlockchain = () => {
         .limit(10);
 
       if (error) throw error;
+      console.log('Fetched blocks:', data?.length || 0);
       setBlocks(data || []);
     } catch (error) {
       console.error('Error fetching blocks:', error);
@@ -65,6 +66,7 @@ export const useBlockchain = () => {
       const { data, error } = await query.order('timestamp', { ascending: false });
 
       if (error) throw error;
+      console.log('Fetched votes:', data?.length || 0, 'for election:', electionId || 'all');
       setVotes(data || []);
     } catch (error) {
       console.error('Error fetching votes:', error);
@@ -78,6 +80,12 @@ export const useBlockchain = () => {
 
   const verifyVoteHash = (voteHash: string) => {
     return votes.find(vote => vote.vote_hash === voteHash);
+  };
+
+  // Function to refresh all data
+  const refreshData = async (electionId?: string) => {
+    console.log('Refreshing blockchain data...');
+    await Promise.all([fetchBlocks(), fetchVotes(electionId)]);
   };
 
   useEffect(() => {
@@ -96,6 +104,7 @@ export const useBlockchain = () => {
     loading,
     fetchBlocks,
     fetchVotes,
-    verifyVoteHash
+    verifyVoteHash,
+    refreshData
   };
 };
