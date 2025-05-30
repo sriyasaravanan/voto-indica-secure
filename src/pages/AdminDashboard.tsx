@@ -8,11 +8,10 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle, Crown } from "lucide-react";
+import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle } from "lucide-react";
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/use-toast";
 
 const AdminDashboard = () => {
   const [newElection, setNewElection] = useState({
@@ -25,9 +24,8 @@ const AdminDashboard = () => {
   });
 
   const { elections, candidates, loading, createElection, fetchElections } = useElections();
-  const { blocks, votes, refreshData } = useBlockchain();
+  const { blocks, votes } = useBlockchain();
   const { profile, signOut } = useAuth();
-  const { toast } = useToast();
 
   const blockchainStats = [
     { label: "Total Blocks", value: blocks.length.toString(), change: "+2,543" },
@@ -59,45 +57,6 @@ const AdminDashboard = () => {
         start_date: "", 
         end_date: "",
         total_voters: 0
-      });
-    }
-  };
-
-  const handleDeclareWinner = async (electionId: string) => {
-    try {
-      const electionVotes = votes.filter(v => v.election_id === electionId);
-      const electionCandidates = candidates.filter(c => c.election_id === electionId);
-      
-      if (electionVotes.length === 0) {
-        toast({
-          title: "Cannot Declare Winner",
-          description: "No votes have been cast in this election yet.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Calculate vote counts
-      const results = electionCandidates.map(candidate => ({
-        ...candidate,
-        votes: electionVotes.filter(v => v.candidate_id === candidate.id).length
-      })).sort((a, b) => b.votes - a.votes);
-
-      const winner = results[0];
-      
-      toast({
-        title: "Winner Declared!",
-        description: `${winner.name} from ${winner.party} has won with ${winner.votes} votes!`,
-      });
-
-      // Here you could update the election status to 'Completed' in the database
-      
-    } catch (error) {
-      console.error('Error declaring winner:', error);
-      toast({
-        title: "Error",
-        description: "Failed to declare winner. Please try again.",
-        variant: "destructive"
       });
     }
   };
@@ -426,24 +385,13 @@ const AdminDashboard = () => {
               <h2 className="text-2xl font-bold text-navy-900">Election Results</h2>
             </div>
 
-            {elections.filter(e => e.status === 'Active' || e.status === 'Completed').map(election => {
+            {elections.filter(e => e.status === 'Active').map(election => {
               const results = getElectionResults(election.id);
               const totalVotes = votes.filter(v => v.election_id === election.id).length;
               
               return (
                 <Card key={election.id} className="glass-card border-0 p-8">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-bold text-navy-900">{election.title} - {election.constituency}</h3>
-                    {election.status === 'Active' && totalVotes > 0 && (
-                      <Button 
-                        onClick={() => handleDeclareWinner(election.id)}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
-                      >
-                        <Crown className="mr-2 h-4 w-4" />
-                        Declare Winner
-                      </Button>
-                    )}
-                  </div>
+                  <h3 className="text-xl font-bold text-navy-900 mb-6">{election.title} - {election.constituency}</h3>
                   
                   <div className="space-y-4">
                     {results.map((candidate, index) => (
@@ -451,7 +399,7 @@ const AdminDashboard = () => {
                         index === 0 && totalVotes > 0 ? 'bg-green-50 border-2 border-green-200' : 'bg-white/50'
                       }`}>
                         <div className="flex items-center space-x-4">
-                          {index === 0 && totalVotes > 0 && <Crown className="h-6 w-6 text-yellow-600" />}
+                          {index === 0 && totalVotes > 0 && <CheckCircle className="h-6 w-6 text-green-600" />}
                           <div className="text-2xl">{candidate.symbol}</div>
                           <div>
                             <h4 className="font-semibold text-navy-900 text-lg">{candidate.name}</h4>

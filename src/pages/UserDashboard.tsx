@@ -67,9 +67,8 @@ const UserDashboard = () => {
   };
 
   const getUserVote = () => {
-    if (!profile?.id || !selectedElection) return null;
-    const userVote = votes.find(vote => vote.voter_id === profile.id && vote.election_id === selectedElection);
-    console.log('User vote found:', !!userVote, 'for election:', selectedElection, 'user:', profile.id);
+    const userVote = votes.find(vote => vote.voter_id === profile?.id && vote.election_id === selectedElection);
+    console.log('User vote found:', !!userVote, 'for election:', selectedElection);
     return userVote;
   };
 
