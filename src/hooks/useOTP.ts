@@ -16,6 +16,8 @@ export const useOTP = (): UseOTPReturn => {
   const sendOTP = async (email: string, userType: 'user' | 'admin'): Promise<boolean> => {
     setIsLoading(true);
     try {
+      console.log('Sending OTP to:', email, 'for user type:', userType);
+      
       const { data, error } = await supabase.functions.invoke('send-otp', {
         body: { email, userType }
       });
@@ -30,15 +32,18 @@ export const useOTP = (): UseOTPReturn => {
         return false;
       }
 
-      if (data?.success) {
-        toast({
-          title: "OTP Sent",
-          description: `Verification code sent to ${email}`,
-        });
-        return true;
-      }
+      console.log('OTP send response:', data);
 
-      return false;
+      if (data?.success) {
+        return true;
+      } else {
+        toast({
+          title: "Error",
+          description: data?.error || "Failed to send OTP. Please try again.",
+          variant: "destructive"
+        });
+        return false;
+      }
     } catch (error) {
       console.error('Error sending OTP:', error);
       toast({
@@ -55,6 +60,8 @@ export const useOTP = (): UseOTPReturn => {
   const verifyOTP = async (email: string, otpCode: string): Promise<boolean> => {
     setIsLoading(true);
     try {
+      console.log('Verifying OTP for:', email, 'with code:', otpCode);
+      
       const { data, error } = await supabase
         .rpc('verify_otp', { 
           p_email: email, 
@@ -63,35 +70,18 @@ export const useOTP = (): UseOTPReturn => {
 
       if (error) {
         console.error('Error verifying OTP:', error);
-        toast({
-          title: "Error",
-          description: "Failed to verify OTP. Please try again.",
-          variant: "destructive"
-        });
         return false;
       }
 
+      console.log('OTP verification result:', data);
+
       if (data) {
-        toast({
-          title: "Success",
-          description: "OTP verified successfully!",
-        });
         return true;
       } else {
-        toast({
-          title: "Invalid OTP",
-          description: "The OTP code is invalid or has expired. Please try again.",
-          variant: "destructive"
-        });
         return false;
       }
     } catch (error) {
       console.error('Error verifying OTP:', error);
-      toast({
-        title: "Error",
-        description: "Failed to verify OTP. Please try again.",
-        variant: "destructive"
-      });
       return false;
     } finally {
       setIsLoading(false);
