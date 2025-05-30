@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -37,9 +38,10 @@ const Signup = () => {
   const [otpSent, setOtpSent] = useState(false);
   const [currentTab, setCurrentTab] = useState("user");
   const [generatedId, setGeneratedId] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { sendOTP, verifyOTP, isLoading } = useOTP();
+  const { sendOTP, verifyOTP, isLoading: otpLoading } = useOTP();
   const { createProfile } = useAuth();
 
   const generateUniqueId = (type: string) => {
@@ -56,14 +58,32 @@ const Signup = () => {
         description: "Please enter your email address first",
         variant: "destructive"
       });
-      return;
+      return false;
     }
     
-    const success = await sendOTP(email, userType as 'user' | 'admin');
-    if (success) {
-      setOtpSent(true);
-      const newId = generateUniqueId(userType);
-      setGeneratedId(newId);
+    try {
+      setIsProcessing(true);
+      const success = await sendOTP(email, userType as 'user' | 'admin');
+      if (success) {
+        setOtpSent(true);
+        const newId = generateUniqueId(userType);
+        setGeneratedId(newId);
+        toast({
+          title: "OTP Sent",
+          description: "Please check your email for the verification code",
+        });
+      }
+      return success;
+    } catch (error) {
+      console.error('Error sending OTP:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send OTP. Please try again.",
+        variant: "destructive"
+      });
+      return false;
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -110,29 +130,48 @@ const Signup = () => {
   };
 
   const handleSignup = async (userType: string) => {
-    if (!otpSent) {
-      await handleSendOTP(userType);
-      return;
-    }
-
-    const form = userType === 'user' ? userForm : adminForm;
-    
-    if (form.password !== form.confirmPassword) {
-      toast({
-        title: "Error",
-        description: "Passwords do not match",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const isValid = await verifyOTP(form.email, form.otp);
-    
-    if (!isValid) {
-      return;
-    }
-
     try {
+      setIsProcessing(true);
+
+      if (!otpSent) {
+        const success = await handleSendOTP(userType);
+        return;
+      }
+
+      const form = userType === 'user' ? userForm : adminForm;
+      
+      if (form.password !== form.confirmPassword) {
+        toast({
+          title: "Error",
+          description: "Passwords do not match",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (!form.otp) {
+        toast({
+          title: "Error",
+          description: "Please enter the OTP code",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('Verifying OTP for signup:', form.email);
+      const isValid = await verifyOTP(form.email, form.otp);
+      
+      if (!isValid) {
+        toast({
+          title: "Invalid OTP",
+          description: "The OTP code is incorrect or has expired. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('OTP verified, creating account...');
+
       // Create user account
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: form.email,
@@ -143,15 +182,18 @@ const Signup = () => {
       });
 
       if (authError) {
+        console.error('Signup error:', authError);
         toast({
           title: "Error",
-          description: authError.message,
+          description: authError.message || "Failed to create account",
           variant: "destructive"
         });
         return;
       }
 
       if (authData.user) {
+        console.log('User account created:', authData.user.id);
+
         // Create profile
         await createProfile(authData.user.id, form.email, userType === 'user' ? 'voter' : 'admin', form);
 
@@ -174,11 +216,15 @@ const Signup = () => {
       console.error('Registration error:', error);
       toast({
         title: "Error",
-        description: "Registration failed",
+        description: "Registration failed. Please try again.",
         variant: "destructive"
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
+
+  const isLoading = isProcessing || otpLoading;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-saffron-50 via-white to-green-50 relative overflow-hidden">
