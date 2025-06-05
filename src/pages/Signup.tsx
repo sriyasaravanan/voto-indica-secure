@@ -47,7 +47,7 @@ const Signup = () => {
     return type === 'user' ? `VTR-${timestamp}-${random}` : `ADM-${timestamp}-${random}`;
   };
 
-  const handleSendOTP = async (userType: string) => {
+  const handleSendOTP = async (userType: 'user' | 'admin') => {
     const email = userType === 'user' ? userForm.email : adminForm.email;
     const form = userType === 'user' ? userForm : adminForm;
     
@@ -130,7 +130,7 @@ const Signup = () => {
     }
   };
 
-  const handleSignup = async (userType: string) => {
+  const handleSignup = async (userType: 'user' | 'admin') => {
     if (!otpSent) {
       await handleSendOTP(userType);
       return;
