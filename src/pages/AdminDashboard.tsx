@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle } from "lucide-react";
+import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle, Trophy } from "lucide-react";
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
@@ -59,6 +59,13 @@ const AdminDashboard = () => {
         total_voters: 0
       });
     }
+  };
+
+  const handleDeclareWinner = async (electionId: string, winnerId: string) => {
+    // Here you would implement the logic to declare a winner
+    // For now, we'll just show a success message
+    console.log(`Declaring winner for election ${electionId}, candidate ${winnerId}`);
+    // You could add a toast notification here or update the election status
   };
 
   const getStatusColor = (status: string) => {
@@ -388,10 +395,22 @@ const AdminDashboard = () => {
             {elections.filter(e => e.status === 'Active').map(election => {
               const results = getElectionResults(election.id);
               const totalVotes = votes.filter(v => v.election_id === election.id).length;
+              const winner = results[0]; // Top candidate
               
               return (
                 <Card key={election.id} className="glass-card border-0 p-8">
-                  <h3 className="text-xl font-bold text-navy-900 mb-6">{election.title} - {election.constituency}</h3>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-navy-900">{election.title} - {election.constituency}</h3>
+                    {totalVotes > 0 && (
+                      <Button 
+                        onClick={() => handleDeclareWinner(election.id, winner.id)}
+                        className="bg-saffron-500 hover:bg-saffron-600"
+                      >
+                        <Trophy className="mr-2 h-4 w-4" />
+                        Declare Winner
+                      </Button>
+                    )}
+                  </div>
                   
                   <div className="space-y-4">
                     {results.map((candidate, index) => (
