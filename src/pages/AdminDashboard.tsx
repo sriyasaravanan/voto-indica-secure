@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,8 @@ import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircl
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const AdminDashboard = () => {
   const [newElection, setNewElection] = useState({
@@ -26,6 +27,7 @@ const AdminDashboard = () => {
   const { elections, candidates, loading, createElection, fetchElections } = useElections();
   const { blocks, votes } = useBlockchain();
   const { profile, signOut } = useAuth();
+  const { toast } = useToast();
 
   const blockchainStats = [
     { label: "Total Blocks", value: blocks.length.toString(), change: "+2,543" },
@@ -62,10 +64,39 @@ const AdminDashboard = () => {
   };
 
   const handleDeclareWinner = async (electionId: string, winnerId: string) => {
-    // Here you would implement the logic to declare a winner
-    // For now, we'll just show a success message
-    console.log(`Declaring winner for election ${electionId}, candidate ${winnerId}`);
-    // You could add a toast notification here or update the election status
+    try {
+      // Update the election status to 'Completed'
+      const { error: electionError } = await supabase
+        .from('elections')
+        .update({ 
+          status: 'Completed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', electionId);
+
+      if (electionError) throw electionError;
+
+      // Get winner details for the toast
+      const winner = candidates.find(c => c.id === winnerId);
+      const election = elections.find(e => e.id === electionId);
+      
+      toast({
+        title: "Winner Declared Successfully!",
+        description: `${winner?.name} from ${winner?.party} has been declared the winner of ${election?.title}`,
+      });
+
+      // Refresh elections to show updated status
+      await fetchElections();
+      
+      console.log(`Winner declared: ${winner?.name} for election ${election?.title}`);
+    } catch (error) {
+      console.error('Error declaring winner:', error);
+      toast({
+        title: "Error",
+        description: "Failed to declare winner. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const getStatusColor = (status: string) => {
