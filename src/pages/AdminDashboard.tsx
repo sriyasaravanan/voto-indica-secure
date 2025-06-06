@@ -417,26 +417,22 @@ const AdminDashboard = () => {
             </div>
           </TabsContent>
 
-          {/* Enhanced Results Tab */}
+          {/* Results Tab */}
           <TabsContent value="results" className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-navy-900">Election Results & Winner Declaration</h2>
-              <Badge className="bg-green-500 text-white">
-                Winner Declared
-              </Badge>
+              <h2 className="text-2xl font-bold text-navy-900">Election Results</h2>
             </div>
 
-            {elections.map(election => {
+            {elections.filter(e => e.status === 'Active').map(election => {
               const results = getElectionResults(election.id);
               const totalVotes = votes.filter(v => v.election_id === election.id).length;
-              const winner = results[0];
-              const isCompleted = election.status === 'Completed';
+              const winner = results[0]; // Top candidate
               
               return (
                 <Card key={election.id} className="glass-card border-0 p-8">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-bold text-navy-900">{election.title} - {election.constituency}</h3>
-                    {election.status === 'Active' && totalVotes > 0 && (
+                    {totalVotes > 0 && (
                       <Button 
                         onClick={() => handleDeclareWinner(election.id, winner.id)}
                         className="bg-saffron-500 hover:bg-saffron-600"
@@ -446,26 +442,6 @@ const AdminDashboard = () => {
                       </Button>
                     )}
                   </div>
-                  
-                  {isCompleted && winner && (
-                    <div className="mb-8 p-8 bg-green-50 border-2 border-green-200 rounded-lg text-center">
-                      <div className="flex justify-center mb-4">
-                        <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center">
-                          <CheckCircle className="h-8 w-8 text-white" />
-                        </div>
-                      </div>
-                      <h4 className="text-2xl font-bold text-green-800 mb-2">Winner Declared</h4>
-                      <p className="text-lg text-green-700 mb-2">{winner.name} has been officially declared the winner</p>
-                      <p className="text-sm text-green-600">Result published on blockchain with immutable proof</p>
-                      
-                      <div className="mt-6 p-4 bg-white rounded-lg border border-green-200">
-                        <h5 className="font-semibold text-green-800 mb-2">Winner Declared</h5>
-                        <p className="text-sm text-green-700">
-                          {winner.name} has been officially declared the winner with {winner.percentage}% votes
-                        </p>
-                      </div>
-                    </div>
-                  )}
                   
                   <div className="space-y-4">
                     {results.map((candidate, index) => (
