@@ -23,9 +23,10 @@ const UserDashboard = () => {
 
   useEffect(() => {
     if (selectedElection) {
+      console.log('Fetching candidates for election:', selectedElection);
       fetchCandidates(selectedElection);
     }
-  }, [selectedElection]);
+  }, [selectedElection, fetchCandidates]);
 
   // Get active election for voting
   const activeElection = elections.find(e => e.status === 'Active');
@@ -39,9 +40,17 @@ const UserDashboard = () => {
   // Filter candidates for selected election
   const electionCandidates = candidates.filter(c => c.election_id === selectedElection);
 
+  console.log('Selected election:', selectedElection);
+  console.log('All candidates:', candidates);
+  console.log('Filtered candidates for selected election:', electionCandidates);
+
   const handleElectionClick = (electionId: string) => {
+    console.log('Election clicked:', electionId);
     setSelectedElection(electionId);
     setActiveTab("vote");
+    // Reset vote state when switching elections
+    setVoteCast(false);
+    setVoteHash("");
   };
 
   const handleVote = async (candidate: any) => {
@@ -181,6 +190,11 @@ const UserDashboard = () => {
                   'No election selected'
                 }
               </p>
+              {selectedElection && (
+                <p className="text-sm text-navy-500 mt-2">
+                  Found {electionCandidates.length} candidate(s) for this election
+                </p>
+              )}
             </div>
 
             {userVote || voteCast ? (
@@ -224,6 +238,7 @@ const UserDashboard = () => {
                 </div>
                 <h3 className="text-xl font-semibold text-navy-900 mb-2">No Candidates Available</h3>
                 <p className="text-navy-600">There are currently no candidates available for this election.</p>
+                <p className="text-navy-500 text-sm mt-2">Election ID: {selectedElection}</p>
               </Card>
             ) : (
               <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
