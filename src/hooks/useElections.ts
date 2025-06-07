@@ -122,11 +122,12 @@ export const useElections = () => {
     }
   };
 
-  const castVote = async (electionId: string, candidateId: string) => {
+  const castVote = async (electionId: string, candidateId: string, walletAddress?: string) => {
     try {
-      const { data, error } = await supabase.rpc('cast_vote', {
+      const { data, error } = await supabase.rpc('cast_vote_with_wallet', {
         p_election_id: electionId,
-        p_candidate_id: candidateId
+        p_candidate_id: candidateId,
+        p_wallet_address: walletAddress
       });
 
       if (error) throw error;

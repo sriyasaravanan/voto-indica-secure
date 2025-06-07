@@ -22,6 +22,10 @@ export const useSolanaWallet = () => {
     }
   };
 
+  const getWalletAddress = () => {
+    return publicKey?.toString() || null;
+  };
+
   const sendVoteTransaction = async (voteData: string) => {
     if (!publicKey || !connected) {
       toast({
@@ -73,6 +77,7 @@ export const useSolanaWallet = () => {
     connect,
     disconnect,
     getBalance,
+    getWalletAddress,
     sendVoteTransaction
   };
 };
