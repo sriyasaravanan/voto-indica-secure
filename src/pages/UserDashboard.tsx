@@ -15,6 +15,7 @@ const UserDashboard = () => {
   const [selectedElection, setSelectedElection] = useState<string | null>(null);
   const [voteCast, setVoteCast] = useState(false);
   const [voteHash, setVoteHash] = useState("");
+  const [activeTab, setActiveTab] = useState("elections");
   
   const { elections, candidates, loading: electionsLoading, fetchCandidates, castVote } = useElections();
   const { votes, blocks, verifyVoteHash } = useBlockchain();
@@ -37,6 +38,11 @@ const UserDashboard = () => {
 
   // Filter candidates for selected election
   const electionCandidates = candidates.filter(c => c.election_id === selectedElection);
+
+  const handleElectionClick = (electionId: string) => {
+    setSelectedElection(electionId);
+    setActiveTab("vote");
+  };
 
   const handleVote = async (candidate: any) => {
     if (!selectedElection) return;
@@ -106,7 +112,7 @@ const UserDashboard = () => {
       </header>
 
       <div className="container mx-auto px-6 py-8">
-        <Tabs defaultValue="elections" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-8">
             <TabsTrigger value="elections">Elections</TabsTrigger>
             <TabsTrigger value="vote">Cast Vote</TabsTrigger>
@@ -126,7 +132,7 @@ const UserDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {elections.map((election) => (
                 <Card key={election.id} className="glass-card border-0 p-6 vote-card-hover cursor-pointer"
-                      onClick={() => setSelectedElection(election.id)}>
+                      onClick={() => handleElectionClick(election.id)}>
                   <div className="flex items-center justify-between mb-4">
                     <Badge className={getStatusColor(election.status)}>
                       {election.status}
@@ -170,7 +176,10 @@ const UserDashboard = () => {
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-navy-900 mb-2">Cast Your Vote</h2>
               <p className="text-navy-600">
-                {activeElection ? `Select your preferred candidate for ${activeElection.title}` : 'No active elections available'}
+                {selectedElection ? 
+                  `Select your preferred candidate for ${elections.find(e => e.id === selectedElection)?.title}` : 
+                  'No election selected'
+                }
               </p>
             </div>
 
@@ -208,13 +217,21 @@ const UserDashboard = () => {
                   </Card>
                 ))}
               </div>
+            ) : selectedElection ? (
+              <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
+                <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Vote className="h-8 w-8 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-navy-900 mb-2">No Candidates Available</h3>
+                <p className="text-navy-600">There are currently no candidates available for this election.</p>
+              </Card>
             ) : (
               <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
                 <div className="w-16 h-16 bg-gray-400 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Vote className="h-8 w-8 text-white" />
                 </div>
-                <h3 className="text-xl font-semibold text-navy-900 mb-2">No Active Elections</h3>
-                <p className="text-navy-600">There are currently no active elections available for voting.</p>
+                <h3 className="text-xl font-semibold text-navy-900 mb-2">No Election Selected</h3>
+                <p className="text-navy-600">Please select an election from the Elections tab to cast your vote.</p>
               </Card>
             )}
           </TabsContent>
@@ -278,14 +295,14 @@ const UserDashboard = () => {
             </div>
 
             <Card className="glass-card border-0 p-8 max-w-4xl mx-auto">
-              {activeElection && (
+              {selectedElection && elections.find(e => e.id === selectedElection) && (
                 <>
-                  <h3 className="text-xl font-bold text-navy-900 mb-6">{activeElection.title} - {activeElection.constituency}</h3>
+                  <h3 className="text-xl font-bold text-navy-900 mb-6">{elections.find(e => e.id === selectedElection)?.title} - {elections.find(e => e.id === selectedElection)?.constituency}</h3>
                   
                   <div className="space-y-4">
                     {electionCandidates.map((candidate) => {
                       const candidateVotes = votes.filter(v => v.candidate_id === candidate.id).length;
-                      const totalVotes = votes.filter(v => v.election_id === activeElection.id).length;
+                      const totalVotes = votes.filter(v => v.election_id === selectedElection).length;
                       const percentage = totalVotes > 0 ? ((candidateVotes / totalVotes) * 100).toFixed(1) : '0.0';
                       
                       return (
