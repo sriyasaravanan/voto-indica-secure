@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,8 @@ import { Vote, Shield, Eye, CheckCircle, Users, Calendar, MapPin, LogOut } from 
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
+import { SolanaWalletButton } from "@/components/SolanaWalletButton";
+import { useSolanaWallet } from "@/hooks/useSolanaWallet";
 
 const UserDashboard = () => {
   const [selectedElection, setSelectedElection] = useState<string | null>(null);
@@ -20,6 +21,7 @@ const UserDashboard = () => {
   const { elections, candidates, loading: electionsLoading, fetchCandidates, castVote } = useElections();
   const { votes, blocks, verifyVoteHash } = useBlockchain();
   const { profile, signOut } = useAuth();
+  const { sendVoteTransaction, connected: walletConnected } = useSolanaWallet();
 
   useEffect(() => {
     if (selectedElection) {
@@ -60,6 +62,18 @@ const UserDashboard = () => {
     if (result && result.success) {
       setVoteHash(result.vote_hash || '');
       setVoteCast(true);
+      
+      // Also record on Solana if wallet is connected
+      if (walletConnected) {
+        const voteData = JSON.stringify({
+          election_id: selectedElection,
+          candidate_id: candidate.id,
+          vote_hash: result.vote_hash,
+          timestamp: new Date().toISOString()
+        });
+        
+        await sendVoteTransaction(voteData);
+      }
     }
   };
 
@@ -122,8 +136,9 @@ const UserDashboard = () => {
 
       <div className="container mx-auto px-6 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-8">
+          <TabsList className="grid w-full grid-cols-5 mb-8">
             <TabsTrigger value="elections">Elections</TabsTrigger>
+            <TabsTrigger value="wallet">Wallet</TabsTrigger>
             <TabsTrigger value="vote">Cast Vote</TabsTrigger>
             <TabsTrigger value="track">Track Vote</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
@@ -177,6 +192,23 @@ const UserDashboard = () => {
                   )}
                 </Card>
               ))}
+            </div>
+          </TabsContent>
+
+          {/* Wallet Tab */}
+          <TabsContent value="wallet" className="space-y-6">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-navy-900 mb-2">Solana Wallet</h2>
+              <p className="text-navy-600">Connect your Solana wallet for blockchain voting</p>
+            </div>
+
+            <div className="max-w-2xl mx-auto">
+              <SolanaWalletButton 
+                onWalletConnected={(publicKey) => {
+                  console.log('Wallet connected:', publicKey);
+                }}
+                showBalance={true}
+              />
             </div>
           </TabsContent>
 
