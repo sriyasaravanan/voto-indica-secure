@@ -11,7 +11,6 @@ import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
 import { SolanaWalletButton } from "@/components/SolanaWalletButton";
 import { useSolanaWallet } from "@/hooks/useSolanaWallet";
-import { toast } from "react-toastify";
 
 const UserDashboard = () => {
   const [selectedElection, setSelectedElection] = useState<string | null>(null);
@@ -22,7 +21,7 @@ const UserDashboard = () => {
   const { elections, candidates, loading: electionsLoading, fetchCandidates, castVote } = useElections();
   const { votes, blocks, verifyVoteHash } = useBlockchain();
   const { profile, signOut } = useAuth();
-  const { sendVoteTransaction, connected: walletConnected, getWalletAddress } = useSolanaWallet();
+  const { sendVoteTransaction, connected: walletConnected } = useSolanaWallet();
 
   useEffect(() => {
     if (selectedElection) {
@@ -59,42 +58,22 @@ const UserDashboard = () => {
   const handleVote = async (candidate: any) => {
     if (!selectedElection) return;
 
-    // Check if wallet is connected
-    if (!walletConnected) {
-      toast({
-        title: "Wallet Required",
-        description: "Please connect your Solana wallet to vote",
-        variant: "destructive"
-      });
-      setActiveTab("wallet");
-      return;
-    }
-
-    const walletAddress = getWalletAddress();
-    if (!walletAddress) {
-      toast({
-        title: "Wallet Address Required",
-        description: "Unable to get wallet address. Please reconnect your wallet",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const result = await castVote(selectedElection, candidate.id, walletAddress);
+    const result = await castVote(selectedElection, candidate.id);
     if (result && result.success) {
       setVoteHash(result.vote_hash || '');
       setVoteCast(true);
       
-      // Record on Solana blockchain
-      const voteData = JSON.stringify({
-        election_id: selectedElection,
-        candidate_id: candidate.id,
-        vote_hash: result.vote_hash,
-        wallet_address: walletAddress,
-        timestamp: new Date().toISOString()
-      });
-      
-      await sendVoteTransaction(voteData);
+      // Also record on Solana if wallet is connected
+      if (walletConnected) {
+        const voteData = JSON.stringify({
+          election_id: selectedElection,
+          candidate_id: candidate.id,
+          vote_hash: result.vote_hash,
+          timestamp: new Date().toISOString()
+        });
+        
+        await sendVoteTransaction(voteData);
+      }
     }
   };
 
@@ -237,40 +216,20 @@ const UserDashboard = () => {
           <TabsContent value="vote" className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-navy-900 mb-2">Cast Your Vote</h2>
-              {!walletConnected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-                  <p className="text-amber-800 font-medium">⚠️ Wallet connection required</p>
-                  <p className="text-amber-700 text-sm">You must connect your Solana wallet to participate in voting</p>
-                </div>
-              ) : (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                  <p className="text-green-800 font-medium">✓ Wallet connected</p>
-                  <p className="text-green-700 text-sm font-mono">{getWalletAddress()?.substring(0, 20)}...</p>
-                </div>
-              )}
               <p className="text-navy-600">
                 {selectedElection ? 
                   `Select your preferred candidate for ${elections.find(e => e.id === selectedElection)?.title}` : 
                   'No election selected'
                 }
               </p>
+              {selectedElection && (
+                <p className="text-sm text-navy-500 mt-2">
+                  Found {electionCandidates.length} candidate(s) for this election
+                </p>
+              )}
             </div>
 
-            {!walletConnected ? (
-              <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
-                <div className="w-16 h-16 bg-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Vote className="h-8 w-8 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold text-navy-900 mb-2">Wallet Connection Required</h3>
-                <p className="text-navy-600 mb-4">Connect your Solana wallet to participate in secure blockchain voting</p>
-                <Button 
-                  onClick={() => setActiveTab("wallet")}
-                  className="bg-saffron-500 hover:bg-saffron-600 text-white"
-                >
-                  Connect Wallet
-                </Button>
-              </Card>
-            ) : userVote || voteCast ? (
+            {userVote || voteCast ? (
               <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
                 <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-vote-cast">
                   <CheckCircle className="h-8 w-8 text-white" />
@@ -297,7 +256,6 @@ const UserDashboard = () => {
                     <Button 
                       onClick={() => handleVote(candidate)}
                       className="w-full bg-saffron-500 hover:bg-saffron-600 text-white"
-                      disabled={!walletConnected}
                     >
                       <Vote className="mr-2 h-4 w-4" />
                       Vote for {candidate.name}
