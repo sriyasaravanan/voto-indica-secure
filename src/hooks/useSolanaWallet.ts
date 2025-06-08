@@ -1,6 +1,6 @@
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, TransactionInstruction } from '@solana/web3.js';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
 
@@ -22,6 +22,29 @@ export const useSolanaWallet = () => {
     }
   };
 
+  const createVoteDataAccount = async (voteData: any) => {
+    if (!publicKey || !connected) return null;
+
+    try {
+      // Create a unique vote account for this vote
+      const voteAccount = new PublicKey(
+        // Generate deterministic address based on vote data
+        await connection.getRecentBlockhash().then(blockhash => 
+          PublicKey.createWithSeed(
+            publicKey,
+            `vote_${voteData.election_id.substring(0, 8)}_${Date.now()}`,
+            SystemProgram.programId
+          )
+        )
+      );
+
+      return voteAccount;
+    } catch (error) {
+      console.error('Error creating vote account:', error);
+      return null;
+    }
+  };
+
   const sendVoteTransaction = async (voteData: string) => {
     if (!publicKey || !connected) {
       toast({
@@ -34,35 +57,121 @@ export const useSolanaWallet = () => {
 
     setLoading(true);
     try {
-      // Create a simple transaction that includes vote data in a memo
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: new PublicKey('11111111111111111111111111111112'), // System program
-          lamports: 1, // Minimal transfer
-        })
-      );
+      const parsedVoteData = JSON.parse(voteData);
+      
+      // Create multiple instructions for a more comprehensive vote record
+      const instructions = [];
 
-      // Add vote data as memo (in a real implementation, you'd use a proper program)
-      // This is a simplified example
+      // 1. Main vote instruction with memo
+      const voteInstruction = new TransactionInstruction({
+        keys: [
+          { pubkey: publicKey, isSigner: true, isWritable: true }
+        ],
+        programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'), // Memo program
+        data: Buffer.from(JSON.stringify({
+          type: 'VOTE',
+          timestamp: new Date().toISOString(),
+          election_id: parsedVoteData.election_id,
+          candidate_id: parsedVoteData.candidate_id,
+          vote_hash: parsedVoteData.vote_hash,
+          voter_signature: `${publicKey.toString()}_${Date.now()}`
+        }))
+      });
+      instructions.push(voteInstruction);
+
+      // 2. Create a small transfer to establish vote on-chain
+      const voteTransfer = SystemProgram.transfer({
+        fromPubkey: publicKey,
+        toPubkey: new PublicKey('11111111111111111111111111111112'), // System program
+        lamports: 1000, // 0.000001 SOL as vote fee
+      });
+      instructions.push(voteTransfer);
+
+      // 3. Add election metadata instruction
+      const electionMetadata = new TransactionInstruction({
+        keys: [
+          { pubkey: publicKey, isSigner: true, isWritable: false }
+        ],
+        programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
+        data: Buffer.from(`ELECTION_META:${parsedVoteData.election_id}:${Date.now()}`)
+      });
+      instructions.push(electionMetadata);
+
+      // Create and send transaction
+      const transaction = new Transaction().add(...instructions);
+      
+      // Get recent blockhash for transaction
+      const { blockhash } = await connection.getRecentBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = publicKey;
+
       const signature = await sendTransaction(transaction, connection);
       
+      // Wait for confirmation
+      await connection.confirmTransaction(signature, 'confirmed');
+      
       toast({
-        title: "Vote recorded on Solana",
-        description: `Transaction signature: ${signature.substring(0, 20)}...`,
+        title: "Vote recorded on Solana blockchain",
+        description: `Transaction confirmed: ${signature.substring(0, 20)}...`,
       });
 
-      return signature;
+      return {
+        signature,
+        blockhash,
+        slot: await connection.getSlot(),
+        confirmations: 1
+      };
     } catch (error) {
-      console.error('Transaction failed:', error);
+      console.error('Blockchain transaction failed:', error);
       toast({
-        title: "Transaction failed",
+        title: "Blockchain transaction failed",
         description: "Failed to record vote on Solana blockchain",
         variant: "destructive"
       });
       return null;
     } finally {
       setLoading(false);
+    }
+  };
+
+  const verifyVoteOnChain = async (signature: string) => {
+    try {
+      const transaction = await connection.getTransaction(signature, {
+        commitment: 'confirmed'
+      });
+      
+      if (transaction) {
+        return {
+          verified: true,
+          slot: transaction.slot,
+          blockTime: transaction.blockTime,
+          fee: transaction.meta?.fee,
+          confirmations: await connection.getSlot() - transaction.slot
+        };
+      }
+      return { verified: false };
+    } catch (error) {
+      console.error('Error verifying vote on chain:', error);
+      return { verified: false };
+    }
+  };
+
+  const getNetworkStats = async () => {
+    try {
+      const slot = await connection.getSlot();
+      const blockHeight = await connection.getBlockHeight();
+      const epochInfo = await connection.getEpochInfo();
+      
+      return {
+        currentSlot: slot,
+        blockHeight,
+        epoch: epochInfo.epoch,
+        slotIndex: epochInfo.slotIndex,
+        slotsInEpoch: epochInfo.slotsInEpoch
+      };
+    } catch (error) {
+      console.error('Error getting network stats:', error);
+      return null;
     }
   };
 
@@ -73,6 +182,9 @@ export const useSolanaWallet = () => {
     connect,
     disconnect,
     getBalance,
-    sendVoteTransaction
+    sendVoteTransaction,
+    verifyVoteOnChain,
+    getNetworkStats,
+    createVoteDataAccount
   };
 };

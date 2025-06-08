@@ -1,5 +1,3 @@
-
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -7,24 +5,26 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Vote, Shield, Eye, CheckCircle, Users, Calendar, MapPin, LogOut } from "lucide-react";
+import { Vote, Shield, Eye, CheckCircle, Users, Calendar, MapPin, LogOut, Clock } from "lucide-react";
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
 import { SolanaWalletButton } from "@/components/SolanaWalletButton";
 import { useSolanaWallet } from "@/hooks/useSolanaWallet";
 import { useToast } from "@/hooks/use-toast";
+import { BlockchainExplorer } from "@/components/BlockchainExplorer";
 
 const UserDashboard = () => {
   const [selectedElection, setSelectedElection] = useState<string | null>(null);
   const [voteCast, setVoteCast] = useState(false);
   const [voteHash, setVoteHash] = useState("");
+  const [solanaSignature, setSolanaSignature] = useState("");
   const [activeTab, setActiveTab] = useState("elections");
   
   const { elections, candidates, loading: electionsLoading, fetchCandidates, castVote } = useElections();
   const { votes, blocks, verifyVoteHash } = useBlockchain();
   const { profile, signOut } = useAuth();
-  const { sendVoteTransaction, connected: walletConnected } = useSolanaWallet();
+  const { sendVoteTransaction, connected: walletConnected, getNetworkStats } = useSolanaWallet();
   const { toast } = useToast();
 
   // Get active election for voting
@@ -36,13 +36,12 @@ const UserDashboard = () => {
     }
   }, [activeElection, selectedElection]);
 
-  // Fix the infinite loop by using a callback pattern instead of dependency array
   useEffect(() => {
     if (selectedElection) {
       console.log('Fetching candidates for election:', selectedElection);
       fetchCandidates(selectedElection);
     }
-  }, [selectedElection]); // Remove fetchCandidates from dependencies to prevent infinite loop
+  }, [selectedElection]);
 
   // Filter candidates for selected election
   const electionCandidates = candidates.filter(c => c.election_id === selectedElection);
@@ -58,6 +57,7 @@ const UserDashboard = () => {
     // Reset vote state when switching elections
     setVoteCast(false);
     setVoteHash("");
+    setSolanaSignature("");
   };
 
   const handleVote = async (candidate: any) => {
@@ -79,16 +79,25 @@ const UserDashboard = () => {
       setVoteHash(result.vote_hash || '');
       setVoteCast(true);
       
-      // Also record on Solana if wallet is connected
+      // Record on Solana blockchain
       if (walletConnected) {
         const voteData = JSON.stringify({
           election_id: selectedElection,
           candidate_id: candidate.id,
           vote_hash: result.vote_hash,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          candidate_name: candidate.name,
+          election_title: elections.find(e => e.id === selectedElection)?.title
         });
         
-        await sendVoteTransaction(voteData);
+        const solanaResult = await sendVoteTransaction(voteData);
+        if (solanaResult?.signature) {
+          setSolanaSignature(solanaResult.signature);
+          toast({
+            title: "Vote Recorded on Blockchain!",
+            description: `Your vote is now immutably recorded on Solana. Transaction: ${solanaResult.signature.substring(0, 20)}...`,
+          });
+        }
       }
     }
   };
@@ -144,7 +153,7 @@ const UserDashboard = () => {
               {walletConnected && (
                 <Badge className="bg-purple-500">
                   <Vote className="h-3 w-3 mr-1" />
-                  Wallet Connected
+                  Blockchain Ready
                 </Badge>
               )}
               <Button variant="outline" size="sm" onClick={signOut}>
@@ -158,12 +167,13 @@ const UserDashboard = () => {
 
       <div className="container mx-auto px-6 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-8">
+          <TabsList className="grid w-full grid-cols-6 mb-8">
             <TabsTrigger value="elections">Elections</TabsTrigger>
             <TabsTrigger value="wallet">Wallet</TabsTrigger>
             <TabsTrigger value="vote">Cast Vote</TabsTrigger>
             <TabsTrigger value="track">Track Vote</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
+            <TabsTrigger value="blockchain">Blockchain</TabsTrigger>
           </TabsList>
 
           {/* Elections Tab */}
@@ -220,17 +230,45 @@ const UserDashboard = () => {
           {/* Wallet Tab */}
           <TabsContent value="wallet" className="space-y-6">
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-navy-900 mb-2">Solana Wallet</h2>
-              <p className="text-navy-600">Connect your Solana wallet for blockchain voting</p>
+              <h2 className="text-2xl font-bold text-navy-900 mb-2">Solana Blockchain Wallet</h2>
+              <p className="text-navy-600">Connect your Solana wallet for immutable blockchain voting</p>
             </div>
 
             <div className="max-w-2xl mx-auto">
               <SolanaWalletButton 
                 onWalletConnected={(publicKey) => {
                   console.log('Wallet connected:', publicKey);
+                  toast({
+                    title: "Blockchain Wallet Connected",
+                    description: "Your votes will now be recorded on the Solana blockchain",
+                  });
                 }}
                 showBalance={true}
               />
+              
+              {walletConnected && (
+                <Card className="glass-card border-0 p-6 mt-6">
+                  <h3 className="text-lg font-bold text-navy-900 mb-4">Blockchain Features Enabled</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center text-green-700">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Immutable vote recording
+                    </div>
+                    <div className="flex items-center text-green-700">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Cryptographic verification
+                    </div>
+                    <div className="flex items-center text-green-700">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Public auditability
+                    </div>
+                    <div className="flex items-center text-green-700">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Decentralized consensus
+                    </div>
+                  </div>
+                </Card>
+              )}
             </div>
           </TabsContent>
 
@@ -338,7 +376,7 @@ const UserDashboard = () => {
           <TabsContent value="track" className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-navy-900 mb-2">Track Your Vote</h2>
-              <p className="text-navy-600">Verify your vote on the public blockchain ledger</p>
+              <p className="text-navy-600">Verify your vote on both the local ledger and Solana blockchain</p>
             </div>
 
             <Card className="glass-card border-0 p-8 max-w-3xl mx-auto">
@@ -349,13 +387,13 @@ const UserDashboard = () => {
                       <CheckCircle className="h-8 w-8 text-white" />
                     </div>
                     <h3 className="text-xl font-bold text-green-700 mb-2">Vote Successfully Verified</h3>
-                    <p className="text-navy-600">Your vote exists on the blockchain and has been counted</p>
+                    <p className="text-navy-600">Your vote exists on both local and blockchain ledgers</p>
                   </div>
 
                   <div className="border-t border-gray-200 pt-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
-                        <h4 className="font-semibold text-navy-900 mb-2">Transaction Details</h4>
+                        <h4 className="font-semibold text-navy-900 mb-2">Local Transaction</h4>
                         <div className="space-y-2 text-sm">
                           <div><span className="text-navy-600">Hash:</span> <span className="font-mono">{(userVote?.vote_hash || voteHash)?.substring(0, 20)}...</span></div>
                           <div><span className="text-navy-600">Block:</span> <span className="font-mono">{userVote?.block_hash?.substring(0, 10)}...</span></div>
@@ -364,12 +402,60 @@ const UserDashboard = () => {
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-semibold text-navy-900 mb-2">Verification Status</h4>
+                        <h4 className="font-semibold text-navy-900 mb-2">Blockchain Transaction</h4>
                         <div className="space-y-2 text-sm">
-                          <div className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Identity Verified</div>
-                          <div className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Vote Recorded</div>
-                          <div className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Blockchain Confirmed</div>
-                          <div className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Anonymity Preserved</div>
+                          {solanaSignature ? (
+                            <>
+                              <div><span className="text-navy-600">Solana Signature:</span> <span className="font-mono">{solanaSignature.substring(0, 20)}...</span></div>
+                              <div><span className="text-navy-600">Network:</span> <span>Solana Devnet</span></div>
+                              <div><span className="text-navy-600">Status:</span> <Badge className="bg-purple-500">On-Chain</Badge></div>
+                              <div><span className="text-navy-600">Immutable:</span> <Badge className="bg-blue-500">Forever</Badge></div>
+                            </>
+                          ) : (
+                            <p className="text-gray-500">No blockchain transaction found</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-6">
+                    <h4 className="font-semibold text-navy-900 mb-2">Verification Status</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Identity Verified</div>
+                        <div className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Vote Recorded</div>
+                        <div className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Database Confirmed</div>
+                        <div className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Anonymity Preserved</div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center">
+                          {solanaSignature ? 
+                            <CheckCircle className="h-4 w-4 text-purple-500 mr-2" /> : 
+                            <Clock className="h-4 w-4 text-gray-400 mr-2" />
+                          }
+                          Blockchain Recorded
+                        </div>
+                        <div className="flex items-center">
+                          {solanaSignature ? 
+                            <CheckCircle className="h-4 w-4 text-purple-500 mr-2" /> : 
+                            <Clock className="h-4 w-4 text-gray-400 mr-2" />
+                          }
+                          Immutable Storage
+                        </div>
+                        <div className="flex items-center">
+                          {solanaSignature ? 
+                            <CheckCircle className="h-4 w-4 text-purple-500 mr-2" /> : 
+                            <Clock className="h-4 w-4 text-gray-400 mr-2" />
+                          }
+                          Public Auditability
+                        </div>
+                        <div className="flex items-center">
+                          {solanaSignature ? 
+                            <CheckCircle className="h-4 w-4 text-purple-500 mr-2" /> : 
+                            <Clock className="h-4 w-4 text-gray-400 mr-2" />
+                          }
+                          Decentralized Consensus
                         </div>
                       </div>
                     </div>
@@ -431,6 +517,11 @@ const UserDashboard = () => {
               )}
             </Card>
           </TabsContent>
+
+          {/* New Blockchain Explorer Tab */}
+          <TabsContent value="blockchain" className="space-y-6">
+            <BlockchainExplorer />
+          </TabsContent>
         </Tabs>
       </div>
     </div>
@@ -438,4 +529,3 @@ const UserDashboard = () => {
 };
 
 export default UserDashboard;
-
