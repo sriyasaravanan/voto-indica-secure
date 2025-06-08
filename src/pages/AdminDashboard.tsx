@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle, Trophy } from "lucide-react";
+import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle, Trophy, X } from "lucide-react";
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
@@ -94,6 +94,101 @@ const AdminDashboard = () => {
       toast({
         title: "Error",
         description: "Failed to declare winner. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleUndeclareWinner = async (electionId: string) => {
+    try {
+      // Update the election status back to 'Active'
+      const { error: electionError } = await supabase
+        .from('elections')
+        .update({ 
+          status: 'Active',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', electionId);
+
+      if (electionError) throw electionError;
+
+      const election = elections.find(e => e.id === electionId);
+      
+      toast({
+        title: "Winner Undeclared Successfully!",
+        description: `${election?.title} is now back to active status. Winner declaration has been reverted.`,
+      });
+
+      // Refresh elections to show updated status
+      await fetchElections();
+      
+      console.log(`Winner undeclared for election ${election?.title}`);
+    } catch (error) {
+      console.error('Error undeclaring winner:', error);
+      toast({
+        title: "Error",
+        description: "Failed to undeclare winner. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const createNewBlock = async () => {
+    try {
+      // Get the latest block to determine the next block number
+      const { data: latestBlock } = await supabase
+        .from('blockchain_blocks')
+        .select('*')
+        .order('block_number', { ascending: false })
+        .limit(1)
+        .single();
+
+      const nextBlockNumber = latestBlock ? latestBlock.block_number + 1 : 1;
+      const previousHash = latestBlock ? latestBlock.block_hash : null;
+
+      // Get recent unblocked votes
+      const recentVotes = votes.slice(0, 5); // Take up to 5 recent votes
+      const voteHashes = recentVotes.map(v => v.vote_hash);
+      
+      // Create merkle root from vote hashes
+      const merkleRoot = voteHashes.length > 0 ? 
+        btoa(voteHashes.join('')).substring(0, 32) : 
+        'no_votes_' + Date.now().toString(36);
+
+      // Generate block hash
+      const blockData = {
+        block_number: nextBlockNumber,
+        previous_block_hash: previousHash,
+        merkle_root: merkleRoot,
+        timestamp: new Date().toISOString(),
+        votes_count: voteHashes.length,
+        validator_node: 'gov-node-001',
+        is_validated: true
+      };
+
+      // Create block hash
+      const blockHash = btoa(JSON.stringify(blockData)).substring(0, 64);
+      blockData.block_hash = blockHash;
+
+      // Insert new block
+      const { error } = await supabase
+        .from('blockchain_blocks')
+        .insert([blockData]);
+
+      if (error) throw error;
+
+      toast({
+        title: "New Block Created",
+        description: `Block #${nextBlockNumber} has been mined and added to the blockchain`,
+      });
+
+      // Refresh blockchain data
+      await fetchBlocks();
+    } catch (error) {
+      console.error('Error creating new block:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create new block",
         variant: "destructive"
       });
     }
@@ -436,15 +531,27 @@ const AdminDashboard = () => {
                 <Card key={election.id} className="glass-card border-0 p-8">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-bold text-navy-900">{election.title} - {election.constituency}</h3>
-                    {election.status === 'Active' && totalVotes > 0 && (
-                      <Button 
-                        onClick={() => handleDeclareWinner(election.id, winner.id)}
-                        className="bg-saffron-500 hover:bg-saffron-600"
-                      >
-                        <Trophy className="mr-2 h-4 w-4" />
-                        Declare Winner
-                      </Button>
-                    )}
+                    <div className="flex space-x-2">
+                      {election.status === 'Active' && totalVotes > 0 && (
+                        <Button 
+                          onClick={() => handleDeclareWinner(election.id, winner.id)}
+                          className="bg-saffron-500 hover:bg-saffron-600"
+                        >
+                          <Trophy className="mr-2 h-4 w-4" />
+                          Declare Winner
+                        </Button>
+                      )}
+                      {isCompleted && (
+                        <Button 
+                          onClick={() => handleUndeclareWinner(election.id)}
+                          className="bg-red-500 hover:bg-red-600"
+                          variant="destructive"
+                        >
+                          <X className="mr-2 h-4 w-4" />
+                          Undeclare Winner
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   
                   {isCompleted && winner && (
