@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -26,13 +27,6 @@ const UserDashboard = () => {
   const { sendVoteTransaction, connected: walletConnected } = useSolanaWallet();
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (selectedElection) {
-      console.log('Fetching candidates for election:', selectedElection);
-      fetchCandidates(selectedElection);
-    }
-  }, [selectedElection, fetchCandidates]);
-
   // Get active election for voting
   const activeElection = elections.find(e => e.status === 'Active');
 
@@ -41,6 +35,14 @@ const UserDashboard = () => {
       setSelectedElection(activeElection.id);
     }
   }, [activeElection, selectedElection]);
+
+  // Fix the infinite loop by using a callback pattern instead of dependency array
+  useEffect(() => {
+    if (selectedElection) {
+      console.log('Fetching candidates for election:', selectedElection);
+      fetchCandidates(selectedElection);
+    }
+  }, [selectedElection]); // Remove fetchCandidates from dependencies to prevent infinite loop
 
   // Filter candidates for selected election
   const electionCandidates = candidates.filter(c => c.election_id === selectedElection);
@@ -243,9 +245,19 @@ const UserDashboard = () => {
                 }
               </p>
               {selectedElection && (
-                <p className="text-sm text-navy-500 mt-2">
-                  Found {electionCandidates.length} candidate(s) for this election
-                </p>
+                <div className="mt-2 space-y-1">
+                  <p className="text-sm text-navy-500">
+                    Found {electionCandidates.length} candidate(s) for this election
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    Election ID: {selectedElection}
+                  </p>
+                  {candidates.length === 0 && (
+                    <p className="text-xs text-red-500">
+                      Debug: No candidates loaded at all. Check database or admin panel.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -302,8 +314,14 @@ const UserDashboard = () => {
                   <Vote className="h-8 w-8 text-white" />
                 </div>
                 <h3 className="text-xl font-semibold text-navy-900 mb-2">No Candidates Available</h3>
-                <p className="text-navy-600">There are currently no candidates available for this election.</p>
-                <p className="text-navy-500 text-sm mt-2">Election ID: {selectedElection}</p>
+                <p className="text-navy-600 mb-2">There are currently no candidates available for this election.</p>
+                <p className="text-navy-500 text-sm mb-4">Election ID: {selectedElection}</p>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Note:</strong> Candidates need to be added by an administrator before voting can begin.
+                    Please contact your election administrator or check back later.
+                  </p>
+                </div>
               </Card>
             ) : (
               <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
@@ -420,3 +438,4 @@ const UserDashboard = () => {
 };
 
 export default UserDashboard;
+
