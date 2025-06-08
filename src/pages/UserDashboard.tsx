@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
 import { SolanaWalletButton } from "@/components/SolanaWalletButton";
 import { useSolanaWallet } from "@/hooks/useSolanaWallet";
+import { useToast } from "@/hooks/use-toast";
 
 const UserDashboard = () => {
   const [selectedElection, setSelectedElection] = useState<string | null>(null);
@@ -22,6 +24,7 @@ const UserDashboard = () => {
   const { votes, blocks, verifyVoteHash } = useBlockchain();
   const { profile, signOut } = useAuth();
   const { sendVoteTransaction, connected: walletConnected } = useSolanaWallet();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (selectedElection) {
@@ -57,6 +60,17 @@ const UserDashboard = () => {
 
   const handleVote = async (candidate: any) => {
     if (!selectedElection) return;
+
+    // Check if wallet is connected
+    if (!walletConnected) {
+      toast({
+        title: "Wallet Required",
+        description: "Please connect your Solana wallet to vote",
+        variant: "destructive"
+      });
+      setActiveTab("wallet");
+      return;
+    }
 
     const result = await castVote(selectedElection, candidate.id);
     if (result && result.success) {
@@ -125,6 +139,12 @@ const UserDashboard = () => {
                 <Shield className="h-3 w-3 mr-1" />
                 Verified Voter
               </Badge>
+              {walletConnected && (
+                <Badge className="bg-purple-500">
+                  <Vote className="h-3 w-3 mr-1" />
+                  Wallet Connected
+                </Badge>
+              )}
               <Button variant="outline" size="sm" onClick={signOut}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
@@ -229,6 +249,19 @@ const UserDashboard = () => {
               )}
             </div>
 
+            {!walletConnected && (
+              <Card className="glass-card border-0 p-6 text-center max-w-2xl mx-auto mb-6">
+                <div className="w-16 h-16 bg-purple-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Shield className="h-8 w-8 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-navy-900 mb-2">Wallet Required</h3>
+                <p className="text-navy-600 mb-4">Please connect your Solana wallet to cast your vote</p>
+                <Button onClick={() => setActiveTab("wallet")} className="bg-purple-500 hover:bg-purple-600">
+                  Connect Wallet
+                </Button>
+              </Card>
+            )}
+
             {userVote || voteCast ? (
               <Card className="glass-card border-0 p-8 text-center max-w-2xl mx-auto">
                 <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-vote-cast">
@@ -241,7 +274,7 @@ const UserDashboard = () => {
                   <p className="font-mono text-green-900 break-all">{userVote?.vote_hash || voteHash}</p>
                 </div>
               </Card>
-            ) : electionCandidates.length > 0 ? (
+            ) : electionCandidates.length > 0 && walletConnected ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
                 {electionCandidates.map((candidate) => (
                   <Card key={candidate.id} className="glass-card border-0 p-6 vote-card-hover">
