@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { SolanaWalletButton } from "@/components/SolanaWalletButton";
 import { useSolanaWallet } from "@/hooks/useSolanaWallet";
 import { useToast } from "@/hooks/use-toast";
-import { BlockchainExplorer } from "@/components/BlockchainExplorer";
 
 const UserDashboard = () => {
   const [selectedElection, setSelectedElection] = useState<string | null>(null);
@@ -182,13 +180,12 @@ const UserDashboard = () => {
 
       <div className="container mx-auto px-6 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-8">
+          <TabsList className="grid w-full grid-cols-5 mb-8">
             <TabsTrigger value="elections">Elections</TabsTrigger>
             <TabsTrigger value="wallet">Wallet</TabsTrigger>
             <TabsTrigger value="vote">Cast Vote</TabsTrigger>
             <TabsTrigger value="track">Track Vote</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
-            <TabsTrigger value="blockchain">Blockchain</TabsTrigger>
           </TabsList>
 
           {/* Elections Tab */}
@@ -592,11 +589,6 @@ const UserDashboard = () => {
                 </>
               )}
             </Card>
-          </TabsContent>
-
-          {/* New Blockchain Explorer Tab */}
-          <TabsContent value="blockchain" className="space-y-6">
-            <BlockchainExplorer />
           </TabsContent>
         </Tabs>
       </div>
