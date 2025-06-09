@@ -99,9 +99,31 @@ export const useElections = () => {
     }
   };
 
+  const getAllCandidatesTemplate = async () => {
+    try {
+      // Get all unique candidates (by name, party, symbol) from existing elections
+      const { data: existingCandidates, error } = await supabase
+        .from('candidates')
+        .select('name, party, symbol, manifesto')
+        .limit(1000); // Get a reasonable number of candidates
+
+      if (error) throw error;
+
+      // Remove duplicates based on name and party combination
+      const uniqueCandidates = existingCandidates?.filter((candidate, index, self) => 
+        index === self.findIndex(c => c.name === candidate.name && c.party === candidate.party)
+      ) || [];
+
+      return uniqueCandidates;
+    } catch (error) {
+      console.error('Error fetching candidate template:', error);
+      return [];
+    }
+  };
+
   const createElection = async (election: Omit<Election, 'id' | 'created_at'>) => {
     try {
-      const { data, error } = await supabase
+      const { data: newElection, error } = await supabase
         .from('elections')
         .insert([election])
         .select()
@@ -109,13 +131,42 @@ export const useElections = () => {
 
       if (error) throw error;
 
+      // Get all existing unique candidates to add to this new election
+      const candidateTemplate = await getAllCandidatesTemplate();
+      
+      if (candidateTemplate.length > 0 && newElection) {
+        // Add all candidates to the new election
+        const candidatesToInsert = candidateTemplate.map(candidate => ({
+          election_id: newElection.id,
+          name: candidate.name,
+          party: candidate.party,
+          symbol: candidate.symbol,
+          manifesto: candidate.manifesto
+        }));
+
+        const { error: candidatesError } = await supabase
+          .from('candidates')
+          .insert(candidatesToInsert);
+
+        if (candidatesError) {
+          console.error('Error adding candidates to new election:', candidatesError);
+          toast({
+            title: "Warning",
+            description: "Election created but some candidates could not be added",
+            variant: "destructive"
+          });
+        } else {
+          console.log(`Added ${candidatesToInsert.length} candidates to new election`);
+        }
+      }
+
       toast({
         title: "Success",
-        description: "Election created successfully and deployed to blockchain",
+        description: `Election created successfully${candidateTemplate.length > 0 ? ` with ${candidateTemplate.length} candidates` : ''}`,
       });
 
       await fetchElections();
-      return data;
+      return newElection;
     } catch (error) {
       console.error('Error creating election:', error);
       toast({
