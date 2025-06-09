@@ -77,12 +77,17 @@ export const useElections = () => {
       let query = supabase.from('candidates').select('*');
       
       if (electionId) {
+        console.log('Fetching candidates for specific election:', electionId);
         query = query.eq('election_id', electionId);
+      } else {
+        console.log('Fetching all candidates');
       }
 
       const { data, error } = await query;
 
       if (error) throw error;
+      
+      console.log('Fetched candidates:', data);
       setCandidates(data || []);
     } catch (error) {
       console.error('Error fetching candidates:', error);
@@ -176,7 +181,8 @@ export const useElections = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchElections(), fetchCandidates()]);
+      await fetchElections();
+      // Don't fetch all candidates initially - only fetch when specific election is selected
       setLoading(false);
     };
 

@@ -39,26 +39,27 @@ const UserDashboard = () => {
 
   useEffect(() => {
     if (selectedElection) {
+      console.log('Selected election changed to:', selectedElection);
       console.log('Fetching candidates for election:', selectedElection);
       fetchCandidates(selectedElection);
+      // Reset vote state when switching elections
+      setVoteCast(false);
+      setVoteHash("");
+      setSolanaSignature("");
     }
-  }, [selectedElection]);
+  }, [selectedElection, fetchCandidates]);
 
-  // Filter candidates for selected election
+  // Filter candidates for selected election (double check)
   const electionCandidates = candidates.filter(c => c.election_id === selectedElection);
 
   console.log('Selected election:', selectedElection);
-  console.log('All candidates:', candidates);
+  console.log('All candidates from hook:', candidates);
   console.log('Filtered candidates for selected election:', electionCandidates);
 
   const handleElectionClick = (electionId: string) => {
     console.log('Election clicked:', electionId);
     setSelectedElection(electionId);
     setActiveTab("vote");
-    // Reset vote state when switching elections
-    setVoteCast(false);
-    setVoteHash("");
-    setSolanaSignature("");
   };
 
   const handleVote = async (candidate: any) => {
@@ -323,9 +324,9 @@ const UserDashboard = () => {
                   <p className="text-xs text-gray-400">
                     Election ID: {selectedElection}
                   </p>
-                  {candidates.length === 0 && (
+                  {electionCandidates.length === 0 && (
                     <p className="text-xs text-red-500">
-                      Debug: No candidates loaded at all. Check database or admin panel.
+                      Debug: No candidates found for this election. Check if candidates are added in admin panel.
                     </p>
                   )}
                 </div>
@@ -534,6 +535,13 @@ const UserDashboard = () => {
                       </div>
                       <h4 className="text-2xl font-bold text-green-800 mb-2">Official Winner Declared</h4>
                       {(() => {
+                        // Fetch fresh candidates for results display
+                        useEffect(() => {
+                          if (selectedElection) {
+                            fetchCandidates(selectedElection);
+                          }
+                        }, [selectedElection]);
+                        
                         const results = getElectionResults(selectedElection);
                         const winner = results[0];
                         return winner ? (
