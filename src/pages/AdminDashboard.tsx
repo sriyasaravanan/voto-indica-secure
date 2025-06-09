@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -24,10 +25,14 @@ const AdminDashboard = () => {
     total_voters: 0
   });
 
-  const { elections, candidates, loading, createElection, fetchElections } = useElections();
-  const { blocks, votes } = useBlockchain();
+  const { elections, candidates, loading, createElection, fetchElections, fetchCandidates } = useElections();
+  const { blocks, votes, fetchBlocks } = useBlockchain();
   const { profile, signOut } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetchCandidates();
+  }, []);
 
   const blockchainStats = [
     { label: "Total Blocks", value: blocks.length.toString(), change: "+2,543" },
@@ -155,20 +160,22 @@ const AdminDashboard = () => {
         btoa(voteHashes.join('')).substring(0, 32) : 
         'no_votes_' + Date.now().toString(36);
 
-      // Generate block hash
+      // Generate block hash first
+      const timestamp = new Date().toISOString();
+      const blockHashInput = `${nextBlockNumber}${previousHash || ''}${merkleRoot}${timestamp}`;
+      const blockHash = btoa(blockHashInput).substring(0, 64);
+
+      // Create block data with the hash
       const blockData = {
         block_number: nextBlockNumber,
         previous_block_hash: previousHash,
         merkle_root: merkleRoot,
-        timestamp: new Date().toISOString(),
+        timestamp: timestamp,
         votes_count: voteHashes.length,
         validator_node: 'gov-node-001',
-        is_validated: true
+        is_validated: true,
+        block_hash: blockHash
       };
-
-      // Create block hash
-      const blockHash = btoa(JSON.stringify(blockData)).substring(0, 64);
-      blockData.block_hash = blockHash;
 
       // Insert new block
       const { error } = await supabase
@@ -416,6 +423,9 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               {elections.map((election) => {
                 const electionVotes = votes.filter(v => v.election_id === election.id);
+                const results = getElectionResults(election.id);
+                const winner = results[0];
+                const isCompleted = election.status === 'Completed';
                 
                 return (
                   <Card key={election.id} className="glass-card border-0 p-6">
@@ -428,7 +438,7 @@ const AdminDashboard = () => {
                     
                     <h3 className="text-lg font-semibold text-navy-900 mb-4">{election.title}</h3>
                     
-                    <div className="space-y-3">
+                    <div className="space-y-3 mb-4">
                       <div className="flex justify-between">
                         <span className="text-sm text-navy-600">Total Voters</span>
                         <span className="font-medium">{election.total_voters.toLocaleString()}</span>
@@ -447,6 +457,42 @@ const AdminDashboard = () => {
                       </div>
                     </div>
 
+                    {/* Winner Declaration Buttons */}
+                    <div className="space-y-2 mb-4">
+                      {election.status === 'Active' && electionVotes.length > 0 && (
+                        <Button 
+                          onClick={() => handleDeclareWinner(election.id, winner.id)}
+                          className="w-full bg-saffron-500 hover:bg-saffron-600"
+                          size="sm"
+                        >
+                          <Trophy className="mr-2 h-4 w-4" />
+                          Declare Winner
+                        </Button>
+                      )}
+                      {isCompleted && (
+                        <Button 
+                          onClick={() => handleUndeclareWinner(election.id)}
+                          className="w-full bg-red-500 hover:bg-red-600"
+                          variant="destructive"
+                          size="sm"
+                        >
+                          <X className="mr-2 h-4 w-4" />
+                          Undeclare Winner
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Winner Display */}
+                    {isCompleted && winner && (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center space-x-2">
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                          <span className="text-sm font-medium text-green-800">Winner: {winner.name}</span>
+                        </div>
+                        <p className="text-xs text-green-600 mt-1">{winner.percentage}% votes</p>
+                      </div>
+                    )}
+
                     {election.status === "Active" && electionVotes.length > 0 && (
                       <div className="mt-4 space-y-2">
                         <div className="flex justify-between text-sm">
@@ -464,7 +510,13 @@ const AdminDashboard = () => {
 
           {/* Blockchain Tab */}
           <TabsContent value="blockchain" className="space-y-6">
-            <h2 className="text-2xl font-bold text-navy-900">Blockchain Network Status</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-navy-900">Blockchain Network Status</h2>
+              <Button onClick={createNewBlock} className="bg-saffron-500 hover:bg-saffron-600">
+                <Plus className="mr-2 h-4 w-4" />
+                Mine New Block
+              </Button>
+            </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="glass-card border-0 p-6">

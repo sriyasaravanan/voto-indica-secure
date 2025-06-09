@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Vote, Shield, Eye, CheckCircle, Users, Calendar, MapPin, LogOut, Clock } from "lucide-react";
+import { Vote, Shield, Eye, CheckCircle, Users, Calendar, MapPin, LogOut, Clock, Trophy } from "lucide-react";
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
@@ -115,6 +116,19 @@ const UserDashboard = () => {
     return votes.find(vote => vote.voter_id === profile?.id && vote.election_id === selectedElection);
   };
 
+  const getElectionResults = (electionId: string) => {
+    const electionVotes = votes.filter(v => v.election_id === electionId);
+    const electionCandidates = candidates.filter(c => c.election_id === electionId);
+    
+    return electionCandidates.map(candidate => ({
+      ...candidate,
+      votes: electionVotes.filter(v => v.candidate_id === candidate.id).length,
+      percentage: electionVotes.length > 0 ? 
+        ((electionVotes.filter(v => v.candidate_id === candidate.id).length / electionVotes.length) * 100).toFixed(1) : 
+        '0.0'
+    })).sort((a, b) => b.votes - a.votes);
+  };
+
   const userVote = getUserVote();
 
   if (electionsLoading) {
@@ -186,44 +200,63 @@ const UserDashboard = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {elections.map((election) => (
-                <Card key={election.id} className="glass-card border-0 p-6 vote-card-hover cursor-pointer"
-                      onClick={() => handleElectionClick(election.id)}>
-                  <div className="flex items-center justify-between mb-4">
-                    <Badge className={getStatusColor(election.status)}>
-                      {election.status}
-                    </Badge>
-                    <span className="text-sm text-navy-600">{election.type}</span>
-                  </div>
-                  
-                  <h3 className="text-lg font-semibold text-navy-900 mb-2">{election.title}</h3>
-                  
-                  <div className="space-y-2 text-sm text-navy-600 mb-4">
-                    <div className="flex items-center">
-                      <MapPin className="h-4 w-4 mr-2" />
-                      {election.constituency}
+              {elections.map((election) => {
+                const electionVotes = votes.filter(v => v.election_id === election.id);
+                const results = getElectionResults(election.id);
+                const winner = results[0];
+                const isCompleted = election.status === 'Completed';
+                
+                return (
+                  <Card key={election.id} className="glass-card border-0 p-6 vote-card-hover cursor-pointer"
+                        onClick={() => handleElectionClick(election.id)}>
+                    <div className="flex items-center justify-between mb-4">
+                      <Badge className={getStatusColor(election.status)}>
+                        {election.status}
+                      </Badge>
+                      <span className="text-sm text-navy-600">{election.type}</span>
                     </div>
-                    <div className="flex items-center">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Ends: {new Date(election.end_date).toLocaleDateString()}
-                    </div>
-                    <div className="flex items-center">
-                      <Users className="h-4 w-4 mr-2" />
-                      {election.total_voters.toLocaleString()} voters
-                    </div>
-                  </div>
-
-                  {election.status === "Active" && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Votes Cast</span>
-                        <span>{votes.filter(v => v.election_id === election.id).length}</span>
+                    
+                    <h3 className="text-lg font-semibold text-navy-900 mb-2">{election.title}</h3>
+                    
+                    <div className="space-y-2 text-sm text-navy-600 mb-4">
+                      <div className="flex items-center">
+                        <MapPin className="h-4 w-4 mr-2" />
+                        {election.constituency}
                       </div>
-                      <Progress value={Math.min((votes.filter(v => v.election_id === election.id).length / election.total_voters) * 100, 100)} className="h-2" />
+                      <div className="flex items-center">
+                        <Calendar className="h-4 w-4 mr-2" />
+                        Ends: {new Date(election.end_date).toLocaleDateString()}
+                      </div>
+                      <div className="flex items-center">
+                        <Users className="h-4 w-4 mr-2" />
+                        {election.total_voters.toLocaleString()} voters
+                      </div>
                     </div>
-                  )}
-                </Card>
-              ))}
+
+                    {/* Winner Declaration Display */}
+                    {isCompleted && winner && (
+                      <div className="p-3 bg-green-50 border-2 border-green-200 rounded-lg mb-4">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <Trophy className="h-4 w-4 text-green-600" />
+                          <span className="text-sm font-bold text-green-800">Winner Declared</span>
+                        </div>
+                        <p className="text-sm text-green-700 font-medium">{winner.name}</p>
+                        <p className="text-xs text-green-600">{winner.party} • {winner.percentage}% votes</p>
+                      </div>
+                    )}
+
+                    {election.status === "Active" && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Votes Cast</span>
+                          <span>{electionVotes.length}</span>
+                        </div>
+                        <Progress value={Math.min((electionVotes.length / election.total_voters) * 100, 100)} className="h-2" />
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
           </TabsContent>
 
@@ -481,17 +514,52 @@ const UserDashboard = () => {
             <Card className="glass-card border-0 p-8 max-w-4xl mx-auto">
               {selectedElection && elections.find(e => e.id === selectedElection) && (
                 <>
-                  <h3 className="text-xl font-bold text-navy-900 mb-6">{elections.find(e => e.id === selectedElection)?.title} - {elections.find(e => e.id === selectedElection)?.constituency}</h3>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-navy-900">{elections.find(e => e.id === selectedElection)?.title} - {elections.find(e => e.id === selectedElection)?.constituency}</h3>
+                    {elections.find(e => e.id === selectedElection)?.status === 'Completed' && (
+                      <Badge className="bg-green-500 text-white">
+                        <Trophy className="h-3 w-3 mr-1" />
+                        Winner Declared
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Winner Declaration Banner */}
+                  {elections.find(e => e.id === selectedElection)?.status === 'Completed' && (
+                    <div className="mb-8 p-6 bg-green-50 border-2 border-green-200 rounded-lg text-center">
+                      <div className="flex justify-center mb-4">
+                        <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center">
+                          <Trophy className="h-8 w-8 text-white" />
+                        </div>
+                      </div>
+                      <h4 className="text-2xl font-bold text-green-800 mb-2">Official Winner Declared</h4>
+                      {(() => {
+                        const results = getElectionResults(selectedElection);
+                        const winner = results[0];
+                        return winner ? (
+                          <>
+                            <p className="text-lg text-green-700 mb-2">{winner.name} has been declared the winner</p>
+                            <p className="text-sm text-green-600">Winning with {winner.percentage}% of total votes • Result published on blockchain</p>
+                          </>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
                   
                   <div className="space-y-4">
                     {electionCandidates.map((candidate) => {
                       const candidateVotes = votes.filter(v => v.candidate_id === candidate.id).length;
                       const totalVotes = votes.filter(v => v.election_id === selectedElection).length;
                       const percentage = totalVotes > 0 ? ((candidateVotes / totalVotes) * 100).toFixed(1) : '0.0';
+                      const isWinner = elections.find(e => e.id === selectedElection)?.status === 'Completed' && 
+                                     getElectionResults(selectedElection)[0]?.id === candidate.id;
                       
                       return (
-                        <div key={candidate.id} className="flex items-center justify-between p-4 bg-white/50 rounded-lg">
+                        <div key={candidate.id} className={`flex items-center justify-between p-4 rounded-lg ${
+                          isWinner ? 'bg-green-50 border-2 border-green-200' : 'bg-white/50'
+                        }`}>
                           <div className="flex items-center space-x-4">
+                            {isWinner && <Trophy className="h-5 w-5 text-green-600" />}
                             <span className="text-2xl">{candidate.symbol}</span>
                             <div>
                               <h4 className="font-semibold text-navy-900">{candidate.name}</h4>
