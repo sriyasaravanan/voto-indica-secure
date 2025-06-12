@@ -1,7 +1,15 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, TransactionInstruction } from '@solana/web3.js';
+import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, TransactionInstruction, Connection } from '@solana/web3.js';
 import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+
+// Fallback RPC endpoints for better reliability
+const RPC_ENDPOINTS = [
+  'https://api.devnet.solana.com',
+  'https://devnet.helius-rpc.com/?api-key=demo',
+  'https://rpc.ankr.com/solana_devnet',
+  'https://solana-devnet.g.alchemy.com/v2/demo',
+];
 
 export const useSolanaWallet = () => {
   const { connection } = useConnection();
@@ -9,17 +17,56 @@ export const useSolanaWallet = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
+  // Create a connection with fallback logic
+  const createRobustConnection = useCallback(async () => {
+    for (const endpoint of RPC_ENDPOINTS) {
+      try {
+        console.log(`Trying RPC endpoint: ${endpoint}`);
+        const testConnection = new Connection(endpoint, {
+          commitment: 'confirmed',
+          confirmTransactionInitialTimeout: 30000,
+        });
+        
+        // Test the connection
+        await testConnection.getVersion();
+        console.log(`Successfully connected to: ${endpoint}`);
+        return testConnection;
+      } catch (error) {
+        console.warn(`Failed to connect to ${endpoint}:`, error);
+        continue;
+      }
+    }
+    
+    // If all fail, return the original connection
+    console.warn('All RPC endpoints failed, using original connection');
+    return connection;
+  }, [connection]);
+
   const getBalance = async () => {
     if (!publicKey) return 0;
     
     try {
-      const balance = await connection.getBalance(publicKey);
-      return balance / LAMPORTS_PER_SOL;
+      console.log('Fetching balance for:', publicKey.toString());
+      
+      // Try with the current connection first
+      try {
+        const balance = await connection.getBalance(publicKey);
+        console.log('Balance fetched successfully:', balance / LAMPORTS_PER_SOL);
+        return balance / LAMPORTS_PER_SOL;
+      } catch (primaryError) {
+        console.warn('Primary connection failed, trying fallback RPC endpoints');
+        
+        // Try with fallback connections
+        const robustConnection = await createRobustConnection();
+        const balance = await robustConnection.getBalance(publicKey);
+        console.log('Balance fetched with fallback:', balance / LAMPORTS_PER_SOL);
+        return balance / LAMPORTS_PER_SOL;
+      }
     } catch (error) {
       console.error('Error getting balance:', error);
       toast({
         title: "Network Error",
-        description: "Unable to fetch balance. Please check your connection.",
+        description: "Unable to fetch balance. This might be a temporary network issue. Please try again.",
         variant: "destructive"
       });
       return 0;
@@ -28,14 +75,27 @@ export const useSolanaWallet = () => {
 
   const testConnection = async () => {
     try {
-      const version = await connection.getVersion();
-      console.log('Solana RPC connection successful:', version);
-      return true;
+      console.log('Testing connection...');
+      
+      // Try primary connection first
+      try {
+        const version = await connection.getVersion();
+        console.log('Primary RPC connection successful:', version);
+        return true;
+      } catch (primaryError) {
+        console.warn('Primary connection failed, testing fallback endpoints');
+        
+        // Test fallback connections
+        const robustConnection = await createRobustConnection();
+        const version = await robustConnection.getVersion();
+        console.log('Fallback RPC connection successful:', version);
+        return true;
+      }
     } catch (error) {
-      console.error('Solana RPC connection failed:', error);
+      console.error('All Solana RPC connections failed:', error);
       toast({
         title: "Connection Error",
-        description: "Unable to connect to Solana network. Please try again.",
+        description: "Unable to connect to Solana network. Please check your internet connection and try again.",
         variant: "destructive"
       });
       return false;
@@ -85,6 +145,9 @@ export const useSolanaWallet = () => {
     try {
       const parsedVoteData = JSON.parse(voteData);
       
+      // Get a robust connection for the transaction
+      const robustConnection = await createRobustConnection();
+      
       // Create multiple instructions for a more comprehensive vote record
       const instructions = [];
 
@@ -127,14 +190,14 @@ export const useSolanaWallet = () => {
       const transaction = new Transaction().add(...instructions);
       
       // Get recent blockhash for transaction
-      const { blockhash } = await connection.getRecentBlockhash();
+      const { blockhash } = await robustConnection.getRecentBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = publicKey;
 
-      const signature = await sendTransaction(transaction, connection);
+      const signature = await sendTransaction(transaction, robustConnection);
       
       // Wait for confirmation
-      await connection.confirmTransaction(signature, 'confirmed');
+      await robustConnection.confirmTransaction(signature, 'confirmed');
       
       toast({
         title: "Vote recorded on Solana blockchain",
@@ -144,7 +207,7 @@ export const useSolanaWallet = () => {
       return {
         signature,
         blockhash,
-        slot: await connection.getSlot(),
+        slot: await robustConnection.getSlot(),
         confirmations: 1
       };
     } catch (error) {
@@ -162,7 +225,8 @@ export const useSolanaWallet = () => {
 
   const verifyVoteOnChain = async (signature: string) => {
     try {
-      const transaction = await connection.getTransaction(signature, {
+      const robustConnection = await createRobustConnection();
+      const transaction = await robustConnection.getTransaction(signature, {
         commitment: 'confirmed'
       });
       
@@ -172,7 +236,7 @@ export const useSolanaWallet = () => {
           slot: transaction.slot,
           blockTime: transaction.blockTime,
           fee: transaction.meta?.fee,
-          confirmations: await connection.getSlot() - transaction.slot
+          confirmations: await robustConnection.getSlot() - transaction.slot
         };
       }
       return { verified: false };
@@ -184,9 +248,10 @@ export const useSolanaWallet = () => {
 
   const getNetworkStats = async () => {
     try {
-      const slot = await connection.getSlot();
-      const blockHeight = await connection.getBlockHeight();
-      const epochInfo = await connection.getEpochInfo();
+      const robustConnection = await createRobustConnection();
+      const slot = await robustConnection.getSlot();
+      const blockHeight = await robustConnection.getBlockHeight();
+      const epochInfo = await robustConnection.getEpochInfo();
       
       return {
         currentSlot: slot,
@@ -212,7 +277,6 @@ export const useSolanaWallet = () => {
     sendVoteTransaction,
     verifyVoteOnChain,
     getNetworkStats,
-    createVoteDataAccount,
     testConnection
   };
 };

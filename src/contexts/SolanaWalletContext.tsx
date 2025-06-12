@@ -23,9 +23,16 @@ export const SolanaWalletProvider: FC<SolanaWalletProviderProps> = ({ children }
   
   // Use multiple RPC endpoints for better reliability
   const endpoint = useMemo(() => {
-    // Try custom RPC first, fallback to default
-    const customRPC = 'https://api.devnet.solana.com';
-    return customRPC || clusterApiUrl(network);
+    // Priority order of RPC endpoints
+    const rpcEndpoints = [
+      'https://api.devnet.solana.com',
+      'https://devnet.helius-rpc.com/?api-key=demo',
+      'https://rpc.ankr.com/solana_devnet',
+      clusterApiUrl(network), // Fallback to default
+    ];
+    
+    // Return the first endpoint for now, we'll handle fallbacks in the hook
+    return rpcEndpoints[0];
   }, [network]);
 
   const wallets = useMemo(
@@ -43,6 +50,8 @@ export const SolanaWalletProvider: FC<SolanaWalletProviderProps> = ({ children }
       config={{
         commitment: 'confirmed',
         confirmTransactionInitialTimeout: 60000,
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
       }}
     >
       <WalletProvider 

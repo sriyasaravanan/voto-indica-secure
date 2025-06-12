@@ -4,7 +4,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Wallet, ExternalLink, Loader2 } from 'lucide-react';
+import { Wallet, ExternalLink, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useSolanaWallet } from '@/hooks/useSolanaWallet';
 
 interface SolanaWalletButtonProps {
@@ -19,6 +19,8 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
   const { publicKey, connected, connecting, getBalance, testConnection } = useSolanaWallet();
   const [balance, setBalance] = useState<number>(0);
   const [connectionTested, setConnectionTested] = useState(false);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState(false);
 
   useEffect(() => {
     // Test connection on mount
@@ -32,10 +34,24 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
       onWalletConnected?.(publicKey.toString());
       
       if (showBalance) {
-        getBalance().then(setBalance);
+        fetchBalance();
       }
     }
-  }, [connected, publicKey, onWalletConnected, showBalance, getBalance]);
+  }, [connected, publicKey, onWalletConnected, showBalance]);
+
+  const fetchBalance = async () => {
+    setBalanceLoading(true);
+    setBalanceError(false);
+    try {
+      const newBalance = await getBalance();
+      setBalance(newBalance);
+    } catch (error) {
+      console.error('Failed to fetch balance:', error);
+      setBalanceError(true);
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
 
   if (connecting) {
     return (
@@ -68,9 +84,33 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
           </div>
           <div className="flex items-center space-x-2">
             {showBalance && (
-              <Badge variant="outline" className="border-purple-500 text-purple-700">
-                {balance.toFixed(4)} SOL
-              </Badge>
+              <div className="flex items-center space-x-2">
+                {balanceLoading ? (
+                  <Badge variant="outline" className="border-gray-400">
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    Loading...
+                  </Badge>
+                ) : balanceError ? (
+                  <div className="flex items-center space-x-1">
+                    <Badge variant="outline" className="border-red-500 text-red-700">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      Error
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={fetchBalance}
+                      className="h-6 px-2"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Badge variant="outline" className="border-purple-500 text-purple-700">
+                    {balance.toFixed(4)} SOL
+                  </Badge>
+                )}
+              </div>
             )}
             <Badge className="bg-green-500">
               Connected
