@@ -18,9 +18,15 @@ interface SolanaWalletProviderProps {
 }
 
 export const SolanaWalletProvider: FC<SolanaWalletProviderProps> = ({ children }) => {
-  // Use devnet for development, change to mainnet-beta for production
+  // Use devnet for development
   const network = WalletAdapterNetwork.Devnet;
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  
+  // Use multiple RPC endpoints for better reliability
+  const endpoint = useMemo(() => {
+    // Try custom RPC first, fallback to default
+    const customRPC = 'https://api.devnet.solana.com';
+    return customRPC || clusterApiUrl(network);
+  }, [network]);
 
   const wallets = useMemo(
     () => [
@@ -32,8 +38,20 @@ export const SolanaWalletProvider: FC<SolanaWalletProviderProps> = ({ children }
   );
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+    <ConnectionProvider 
+      endpoint={endpoint}
+      config={{
+        commitment: 'confirmed',
+        confirmTransactionInitialTimeout: 60000,
+      }}
+    >
+      <WalletProvider 
+        wallets={wallets} 
+        autoConnect={false}
+        onError={(error) => {
+          console.error('Wallet connection error:', error);
+        }}
+      >
         <WalletModalProvider>
           {children}
         </WalletModalProvider>

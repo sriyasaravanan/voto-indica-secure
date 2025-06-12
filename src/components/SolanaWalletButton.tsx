@@ -4,7 +4,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Wallet, ExternalLink } from 'lucide-react';
+import { Wallet, ExternalLink, Loader2 } from 'lucide-react';
 import { useSolanaWallet } from '@/hooks/useSolanaWallet';
 
 interface SolanaWalletButtonProps {
@@ -16,8 +16,16 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
   onWalletConnected,
   showBalance = false
 }) => {
-  const { publicKey, connected, getBalance } = useSolanaWallet();
+  const { publicKey, connected, connecting, getBalance, testConnection } = useSolanaWallet();
   const [balance, setBalance] = useState<number>(0);
+  const [connectionTested, setConnectionTested] = useState(false);
+
+  useEffect(() => {
+    // Test connection on mount
+    if (!connectionTested) {
+      testConnection().then(() => setConnectionTested(true));
+    }
+  }, [testConnection, connectionTested]);
 
   useEffect(() => {
     if (connected && publicKey) {
@@ -28,6 +36,20 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
       }
     }
   }, [connected, publicKey, onWalletConnected, showBalance, getBalance]);
+
+  if (connecting) {
+    return (
+      <Card className="glass-card border-0 p-6 text-center">
+        <div className="w-16 h-16 bg-purple-500 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Loader2 className="h-8 w-8 text-white animate-spin" />
+        </div>
+        <h3 className="text-lg font-semibold text-navy-900 mb-2">Connecting Wallet...</h3>
+        <p className="text-navy-600 text-sm mb-4">
+          Please approve the connection in your wallet
+        </p>
+      </Card>
+    );
+  }
 
   if (connected && publicKey) {
     return (
@@ -76,6 +98,11 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
         <ExternalLink className="h-3 w-3 mr-1" />
         Supports Phantom, Solflare, and more
       </div>
+      {!connectionTested && (
+        <div className="mt-2 text-xs text-amber-600">
+          Testing network connection...
+        </div>
+      )}
     </Card>
   );
 };

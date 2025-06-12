@@ -1,4 +1,3 @@
-
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, TransactionInstruction } from '@solana/web3.js';
 import { useToast } from '@/hooks/use-toast';
@@ -6,7 +5,7 @@ import { useState } from 'react';
 
 export const useSolanaWallet = () => {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, connected, disconnect, connect } = useWallet();
+  const { publicKey, sendTransaction, connected, disconnect, connect, connecting } = useWallet();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -18,7 +17,28 @@ export const useSolanaWallet = () => {
       return balance / LAMPORTS_PER_SOL;
     } catch (error) {
       console.error('Error getting balance:', error);
+      toast({
+        title: "Network Error",
+        description: "Unable to fetch balance. Please check your connection.",
+        variant: "destructive"
+      });
       return 0;
+    }
+  };
+
+  const testConnection = async () => {
+    try {
+      const version = await connection.getVersion();
+      console.log('Solana RPC connection successful:', version);
+      return true;
+    } catch (error) {
+      console.error('Solana RPC connection failed:', error);
+      toast({
+        title: "Connection Error",
+        description: "Unable to connect to Solana network. Please try again.",
+        variant: "destructive"
+      });
+      return false;
     }
   };
 
@@ -52,6 +72,12 @@ export const useSolanaWallet = () => {
         description: "Please connect your Solana wallet first",
         variant: "destructive"
       });
+      return null;
+    }
+
+    // Test connection first
+    const connectionWorking = await testConnection();
+    if (!connectionWorking) {
       return null;
     }
 
@@ -125,7 +151,7 @@ export const useSolanaWallet = () => {
       console.error('Blockchain transaction failed:', error);
       toast({
         title: "Blockchain transaction failed",
-        description: "Failed to record vote on Solana blockchain",
+        description: "Failed to record vote on Solana blockchain. Please check your wallet and try again.",
         variant: "destructive"
       });
       return null;
@@ -178,6 +204,7 @@ export const useSolanaWallet = () => {
   return {
     publicKey,
     connected,
+    connecting,
     loading,
     connect,
     disconnect,
@@ -185,6 +212,7 @@ export const useSolanaWallet = () => {
     sendVoteTransaction,
     verifyVoteOnChain,
     getNetworkStats,
-    createVoteDataAccount
+    createVoteDataAccount,
+    testConnection
   };
 };
