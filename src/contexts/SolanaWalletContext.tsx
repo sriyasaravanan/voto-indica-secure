@@ -51,7 +51,6 @@ export const SolanaWalletProvider: FC<SolanaWalletProviderProps> = ({ children }
       config={{
         commitment: 'confirmed',
         confirmTransactionInitialTimeout: 60000,
-        preflightCommitment: 'confirmed',
       }}
     >
       <WalletProvider 
