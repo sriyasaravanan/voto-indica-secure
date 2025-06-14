@@ -95,6 +95,11 @@ export const useElections = () => {
           created_at: election.created_at
         }));
         setElections(typedElections);
+
+        // Auto-populate candidates for elections that don't have them
+        for (const election of typedElections) {
+          await ensureStandardCandidates(election.id);
+        }
       }
     } catch (error) {
       console.error('Error fetching elections:', error);
@@ -123,6 +128,18 @@ export const useElections = () => {
       
       console.log('Fetched candidates:', data);
       setCandidates(data || []);
+      
+      // If no candidates found for a specific election, try to add them
+      if (electionId && (!data || data.length === 0)) {
+        console.log('No candidates found, attempting to add standard candidates');
+        await ensureStandardCandidates(electionId);
+        // Refetch after adding candidates
+        const { data: newData, error: newError } = await query;
+        if (!newError && newData) {
+          console.log('Refetched candidates after adding:', newData);
+          setCandidates(newData);
+        }
+      }
     } catch (error) {
       console.error('Error fetching candidates:', error);
       toast({
@@ -167,7 +184,7 @@ export const useElections = () => {
       console.log(`Added ${candidatesToInsert.length} standard candidates to election ${electionId}`);
     } catch (error) {
       console.error('Error ensuring standard candidates:', error);
-      throw error;
+      // Don't throw here to avoid breaking the main flow
     }
   };
 
@@ -251,12 +268,19 @@ export const useElections = () => {
 
   const castVote = async (electionId: string, candidateId: string) => {
     try {
+      console.log('Attempting to cast vote for election:', electionId, 'candidate:', candidateId);
+      
       const { data, error } = await supabase.rpc('cast_vote', {
         p_election_id: electionId,
         p_candidate_id: candidateId
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('RPC error:', error);
+        throw error;
+      }
+
+      console.log('Cast vote response:', data);
 
       // Safely handle the response type conversion
       let response: CastVoteResponse;
@@ -293,7 +317,7 @@ export const useElections = () => {
       console.error('Error casting vote:', error);
       toast({
         title: "Error",
-        description: "Failed to cast vote",
+        description: "Failed to cast vote. Please check your connection and try again.",
         variant: "destructive"
       });
       return null;
@@ -304,7 +328,6 @@ export const useElections = () => {
     const loadData = async () => {
       setLoading(true);
       await fetchElections();
-      // Don't fetch all candidates initially - only fetch when specific election is selected
       setLoading(false);
     };
 
