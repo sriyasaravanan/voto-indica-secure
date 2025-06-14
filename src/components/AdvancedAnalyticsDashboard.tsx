@@ -30,6 +30,7 @@ import {
   BarChart, 
   Bar,
   PieChart,
+  Pie,
   Cell,
   ComposedChart
 } from 'recharts';
