@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle, Trophy, X } from "lucide-react";
+import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle, Trophy, X, UserPlus } from "lucide-react";
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,7 +24,7 @@ const AdminDashboard = () => {
     total_voters: 0
   });
 
-  const { elections, candidates, loading, createElection, fetchElections, fetchCandidates } = useElections();
+  const { elections, candidates, loading, createElection, fetchElections, fetchCandidates, populateAllElectionsWithCandidates } = useElections();
   const { blocks, votes, fetchBlocks } = useBlockchain();
   const { profile, signOut } = useAuth();
   const { toast } = useToast();
@@ -347,7 +346,17 @@ const AdminDashboard = () => {
             </div>
 
             <Card className="glass-card border-0 p-6">
-              <h3 className="text-lg font-semibold text-navy-900 mb-4">Create New Election</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-navy-900">Create New Election</h3>
+                <Button 
+                  onClick={populateAllElectionsWithCandidates}
+                  className="bg-blue-500 hover:bg-blue-600"
+                  size="sm"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Add Standard Candidates to All Elections
+                </Button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="title">Election Title</Label>

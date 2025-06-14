@@ -33,6 +33,40 @@ interface CastVoteResponse {
   error?: string;
 }
 
+// Standard candidate template that will be used for all elections
+const STANDARD_CANDIDATES = [
+  {
+    name: "Rajesh Kumar",
+    party: "Bharatiya Janata Party",
+    symbol: "🪷",
+    manifesto: "Development, Digital India, and Economic Growth"
+  },
+  {
+    name: "Priya Sharma",
+    party: "Indian National Congress",
+    symbol: "✋",
+    manifesto: "Social Justice, Employment, and Healthcare for All"
+  },
+  {
+    name: "Amit Singh",
+    party: "Aam Aadmi Party",
+    symbol: "🧹",
+    manifesto: "Corruption-free Governance and Quality Education"
+  },
+  {
+    name: "Sunita Patel",
+    party: "Bahujan Samaj Party",
+    symbol: "🐘",
+    manifesto: "Equality, Social Justice, and Empowerment"
+  },
+  {
+    name: "Vikram Yadav",
+    party: "Samajwadi Party",
+    symbol: "🚲",
+    manifesto: "Farmer Welfare and Youth Employment"
+  }
+];
+
 export const useElections = () => {
   const [elections, setElections] = useState<Election[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -99,25 +133,86 @@ export const useElections = () => {
     }
   };
 
-  const getAllCandidatesTemplate = async () => {
+  const ensureStandardCandidates = async (electionId: string) => {
     try {
-      // Get all unique candidates (by name, party, symbol) from existing elections
-      const { data: existingCandidates, error } = await supabase
+      // Check if candidates already exist for this election
+      const { data: existingCandidates, error: checkError } = await supabase
         .from('candidates')
-        .select('name, party, symbol, manifesto')
-        .limit(1000); // Get a reasonable number of candidates
+        .select('*')
+        .eq('election_id', electionId);
 
-      if (error) throw error;
+      if (checkError) throw checkError;
 
-      // Remove duplicates based on name and party combination
-      const uniqueCandidates = existingCandidates?.filter((candidate, index, self) => 
-        index === self.findIndex(c => c.name === candidate.name && c.party === candidate.party)
-      ) || [];
+      // If candidates already exist, don't add duplicates
+      if (existingCandidates && existingCandidates.length > 0) {
+        console.log(`Election ${electionId} already has ${existingCandidates.length} candidates`);
+        return;
+      }
 
-      return uniqueCandidates;
+      // Add standard candidates to the election
+      const candidatesToInsert = STANDARD_CANDIDATES.map(candidate => ({
+        election_id: electionId,
+        name: candidate.name,
+        party: candidate.party,
+        symbol: candidate.symbol,
+        manifesto: candidate.manifesto
+      }));
+
+      const { error: insertError } = await supabase
+        .from('candidates')
+        .insert(candidatesToInsert);
+
+      if (insertError) throw insertError;
+
+      console.log(`Added ${candidatesToInsert.length} standard candidates to election ${electionId}`);
     } catch (error) {
-      console.error('Error fetching candidate template:', error);
-      return [];
+      console.error('Error ensuring standard candidates:', error);
+      throw error;
+    }
+  };
+
+  const populateAllElectionsWithCandidates = async () => {
+    try {
+      // Get all elections
+      const { data: allElections, error: electionsError } = await supabase
+        .from('elections')
+        .select('id, title');
+
+      if (electionsError) throw electionsError;
+
+      if (!allElections || allElections.length === 0) {
+        console.log('No elections found to populate with candidates');
+        return;
+      }
+
+      let electionsUpdated = 0;
+
+      // Add standard candidates to each election that doesn't have them
+      for (const election of allElections) {
+        try {
+          await ensureStandardCandidates(election.id);
+          electionsUpdated++;
+        } catch (error) {
+          console.error(`Failed to add candidates to election ${election.title}:`, error);
+        }
+      }
+
+      if (electionsUpdated > 0) {
+        toast({
+          title: "Success",
+          description: `Updated ${electionsUpdated} elections with standard candidates`,
+        });
+        
+        // Refresh candidates data
+        await fetchCandidates();
+      }
+    } catch (error) {
+      console.error('Error populating elections with candidates:', error);
+      toast({
+        title: "Error",
+        description: "Failed to populate elections with candidates",
+        variant: "destructive"
+      });
     }
   };
 
@@ -131,42 +226,18 @@ export const useElections = () => {
 
       if (error) throw error;
 
-      // Get all existing unique candidates to add to this new election
-      const candidateTemplate = await getAllCandidatesTemplate();
-      
-      if (candidateTemplate.length > 0 && newElection) {
-        // Add all candidates to the new election
-        const candidatesToInsert = candidateTemplate.map(candidate => ({
-          election_id: newElection.id,
-          name: candidate.name,
-          party: candidate.party,
-          symbol: candidate.symbol,
-          manifesto: candidate.manifesto
-        }));
+      if (newElection) {
+        // Ensure this new election gets the standard candidates
+        await ensureStandardCandidates(newElection.id);
 
-        const { error: candidatesError } = await supabase
-          .from('candidates')
-          .insert(candidatesToInsert);
+        toast({
+          title: "Success",
+          description: `Election created successfully with ${STANDARD_CANDIDATES.length} candidates`,
+        });
 
-        if (candidatesError) {
-          console.error('Error adding candidates to new election:', candidatesError);
-          toast({
-            title: "Warning",
-            description: "Election created but some candidates could not be added",
-            variant: "destructive"
-          });
-        } else {
-          console.log(`Added ${candidatesToInsert.length} candidates to new election`);
-        }
+        await fetchElections();
+        return newElection;
       }
-
-      toast({
-        title: "Success",
-        description: `Election created successfully${candidateTemplate.length > 0 ? ` with ${candidateTemplate.length} candidates` : ''}`,
-      });
-
-      await fetchElections();
-      return newElection;
     } catch (error) {
       console.error('Error creating election:', error);
       toast({
@@ -247,6 +318,8 @@ export const useElections = () => {
     fetchElections,
     fetchCandidates,
     createElection,
-    castVote
+    castVote,
+    populateAllElectionsWithCandidates,
+    ensureStandardCandidates
   };
 };
