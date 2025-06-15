@@ -78,7 +78,7 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
             <div>
               <p className="text-sm font-medium text-navy-900">Solana Wallet Connected</p>
               <p className="text-xs text-navy-600 font-mono">
-                {publicKey.toString().substring(0, 8)}...{publicKey.toString().substring(-8)}
+                {publicKey.toString().substring(0, 8)}...{publicKey.toString().slice(-8)}
               </p>
             </div>
           </div>
@@ -112,7 +112,7 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
                 )}
               </div>
             )}
-            <Badge className="bg-green-500">
+            <Badge className="bg-green-500 hover:bg-green-500">
               Connected
             </Badge>
           </div>
