@@ -7,12 +7,14 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle, Trophy, X, UserPlus } from "lucide-react";
+import { Shield, Vote, Users, Eye, BarChart3, Settings, LogOut, Plus, CheckCircle, AlertTriangle, Trophy, X, UserPlus, Edit, Trash, CalendarPlus } from "lucide-react";
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { Dialog, DialogTitle, DialogContent, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { useForm } from "react-hook-form";
 
 const AdminDashboard = () => {
   const [newElection, setNewElection] = useState({
@@ -220,6 +222,89 @@ const AdminDashboard = () => {
         ((electionVotes.filter(v => v.candidate_id === candidate.id).length / electionVotes.length) * 100).toFixed(1) : 
         '0.0'
     })).sort((a, b) => b.votes - a.votes);
+  };
+
+  // For editing election dates
+  const [editingElectionId, setEditingElectionId] = useState<string | null>(null);
+  const [dateEdit, setDateEdit] = useState<{ start_date: string; end_date: string }>({ start_date: "", end_date: "" });
+
+  // Candidate Dialog
+  const [candidateDialog, setCandidateDialog] = useState<{ open: boolean, electionId?: string }>({ open: false });
+
+  // For candidate form
+  const { register, handleSubmit, reset } = useForm<{ name: string; party: string; symbol: string; manifesto: string }>();
+
+  /**
+   * Update election dates for a given election
+   */
+  const handleUpdateElectionDates = async (electionId: string) => {
+    try {
+      const { error } = await supabase.from("elections")
+        .update({
+          start_date: dateEdit.start_date,
+          end_date: dateEdit.end_date,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", electionId);
+
+      if (error) throw error;
+      toast({
+        title: "Election Dates Updated",
+        description: "Election dates have been successfully updated."
+      });
+      setEditingElectionId(null);
+      fetchElections();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to update election dates.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  /**
+   * Open edit date modal for election
+   */
+  const openEditDateModal = (election: any) => {
+    setEditingElectionId(election.id);
+    setDateEdit({
+      start_date: election.start_date?.slice(0, 10) || "",
+      end_date: election.end_date?.slice(0, 10) || "",
+    });
+  };
+
+  /**
+   * Add candidate to election
+   */
+  const onAddCandidate = async (data: { name: string; party: string; symbol: string; manifesto: string }) => {
+    if (!candidateDialog.electionId) return;
+    try {
+      const { error } = await supabase.from("candidates").insert([{
+        ...data,
+        election_id: candidateDialog.electionId
+      }]);
+      if (error) throw error;
+      toast({ title: "Candidate Added", description: `${data.name} has been added.` });
+      fetchCandidates(candidateDialog.electionId);
+      reset();
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to add candidate", variant: "destructive" });
+    }
+  };
+
+  /**
+   * Delete candidate by id
+   */
+  const onDeleteCandidate = async (candidateId: string, electionId: string) => {
+    try {
+      const { error } = await supabase.from("candidates").delete().eq("id", candidateId);
+      if (error) throw error;
+      toast({ title: "Candidate Deleted", description: "Candidate has been removed." });
+      fetchCandidates(electionId);
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to delete candidate", variant: "destructive" });
+    }
   };
 
   if (loading) {
@@ -435,6 +520,7 @@ const AdminDashboard = () => {
                 const results = getElectionResults(election.id);
                 const winner = results[0];
                 const isCompleted = election.status === 'Completed';
+                const canEditDates = profile?.user_type === "admin";
                 
                 return (
                   <Card key={election.id} className="glass-card border-0 p-6">
@@ -448,10 +534,70 @@ const AdminDashboard = () => {
                     <h3 className="text-lg font-semibold text-navy-900 mb-4">{election.title}</h3>
                     
                     <div className="space-y-3 mb-4">
-                      <div className="flex justify-between">
+                      <div className="flex justify-between items-center">
                         <span className="text-sm text-navy-600">Total Voters</span>
                         <span className="font-medium">{election.total_voters.toLocaleString()}</span>
                       </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-navy-600">Start Date</span>
+                        <span className="font-medium flex items-center gap-2">
+                          {editingElectionId === election.id ? (
+                            <Input
+                              type="date"
+                              className="w-32"
+                              value={dateEdit.start_date}
+                              onChange={e => setDateEdit(d => ({ ...d, start_date: e.target.value }))}
+                            />
+                          ) : (
+                            election.start_date?.slice(0, 10)
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-navy-600">End Date</span>
+                        <span className="font-medium flex items-center gap-2">
+                          {editingElectionId === election.id ? (
+                            <Input
+                              type="date"
+                              className="w-32"
+                              value={dateEdit.end_date}
+                              onChange={e => setDateEdit(d => ({ ...d, end_date: e.target.value }))}
+                            />
+                          ) : (
+                            election.end_date?.slice(0, 10)
+                          )}
+                        </span>
+                      </div>
+                      {canEditDates && (
+                        <div className="flex gap-2">
+                          {editingElectionId === election.id ? (
+                            <>
+                              <Button size="sm"
+                                className="bg-green-600 hover:bg-green-700"
+                                onClick={() => handleUpdateElectionDates(election.id)}
+                                disabled={!dateEdit.start_date || !dateEdit.end_date}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setEditingElectionId(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <Button size="sm" variant="outline"
+                              onClick={() => openEditDateModal(election)}
+                              className="flex items-center"
+                            >
+                              <Edit className="w-4 h-4 mr-2" />
+                              Edit Dates
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-sm text-navy-600">Votes Cast</span>
                         <span className="font-medium">{electionVotes.length.toLocaleString()}</span>
@@ -465,7 +611,7 @@ const AdminDashboard = () => {
                         <span className="font-medium text-green-600">100%</span>
                       </div>
                     </div>
-
+                    
                     {/* Winner Declaration Buttons */}
                     <div className="space-y-2 mb-4">
                       {election.status === 'Active' && electionVotes.length > 0 && (
@@ -511,6 +657,46 @@ const AdminDashboard = () => {
                         <Progress value={(electionVotes.length / election.total_voters) * 100} className="h-2" />
                       </div>
                     )}
+
+                    {/* Candidate Management */}
+                    <Dialog open={candidateDialog.open && candidateDialog.electionId === election.id} onOpenChange={open => setCandidateDialog({ open, electionId: open ? election.id : undefined })}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" className="w-full mt-3" onClick={() => setCandidateDialog({ open: true, electionId: election.id })}>
+                          <CalendarPlus className="mr-2 w-4 h-4" />
+                          Manage Candidates
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogTitle>Manage Candidates</DialogTitle>
+                        <form onSubmit={handleSubmit(onAddCandidate)} className="space-y-2">
+                          <Input placeholder="Name" {...register("name", { required: true })} />
+                          <Input placeholder="Party" {...register("party", { required: true })} />
+                          <Input placeholder="Symbol (emoji)" {...register("symbol", { required: true })} />
+                          <Input placeholder="Manifesto" {...register("manifesto")} />
+                          <DialogFooter>
+                            <Button type="submit" className="bg-green-600 hover:bg-green-700">
+                              Add Candidate
+                            </Button>
+                          </DialogFooter>
+                        </form>
+                        <div className="mt-4">
+                          <div className="font-semibold mb-2">Existing Candidates</div>
+                          {candidates.filter(c => c.election_id === election.id).map(candidate => (
+                            <div key={candidate.id} className="flex items-center justify-between border-b p-2">
+                              <div className="flex gap-2 items-center">
+                                <span className="text-2xl">{candidate.symbol}</span>
+                                <span>{candidate.name}</span>
+                                <span className="text-xs text-navy-700">{candidate.party}</span>
+                              </div>
+                              <Button size="icon" variant="destructive"
+                                onClick={() => onDeleteCandidate(candidate.id, election.id)}>
+                                <Trash className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </Card>
                 );
               })}
