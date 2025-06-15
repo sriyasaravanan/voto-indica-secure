@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -17,6 +16,7 @@ const Login = () => {
   const [adminForm, setAdminForm] = useState({ adminId: "", password: "", otp: "" });
   const [otpSent, setOtpSent] = useState(false);
   const [currentTab, setCurrentTab] = useState("user");
+  const [resendLoading, setResendLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { sendOTP, verifyOTP, isLoading } = useOTP();
@@ -148,6 +148,28 @@ const Login = () => {
     }
   };
 
+  const handleResendOTP = async (userType: string) => {
+    setResendLoading(true);
+    const email = userType === 'user' ? userForm.email : adminForm.adminId;
+    if (!email) {
+      toast({
+        title: "Error",
+        description: "Enter email to resend OTP.",
+        variant: "destructive"
+      });
+      setResendLoading(false);
+      return;
+    }
+    const success = await sendOTP(email, userType as 'user' | 'admin');
+    if (success) {
+      toast({
+        title: "OTP Sent",
+        description: `A new OTP has been sent to ${email}.`,
+      });
+    }
+    setResendLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-saffron-50 via-white to-green-50 relative overflow-hidden">
       <div className="absolute inset-0 blockchain-grid opacity-20"></div>
@@ -239,6 +261,15 @@ const Login = () => {
                       value={userForm.otp}
                       onChange={(e) => setUserForm({...userForm, otp: e.target.value})}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-2 w-full"
+                      onClick={() => handleResendOTP("user")}
+                      disabled={resendLoading || isLoading}
+                    >
+                      {resendLoading ? "Resending..." : "Resend OTP"}
+                    </Button>
                   </div>
                 )}
 
@@ -293,6 +324,15 @@ const Login = () => {
                       value={adminForm.otp}
                       onChange={(e) => setAdminForm({...adminForm, otp: e.target.value})}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-2 w-full"
+                      onClick={() => handleResendOTP("admin")}
+                      disabled={resendLoading || isLoading}
+                    >
+                      {resendLoading ? "Resending..." : "Resend OTP"}
+                    </Button>
                   </div>
                 )}
 

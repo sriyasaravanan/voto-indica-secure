@@ -37,6 +37,7 @@ const Signup = () => {
   const [currentTab, setCurrentTab] = useState("user");
   const [generatedId, setGeneratedId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { sendOTP, verifyOTP, isLoading: otpLoading } = useOTP();
@@ -214,6 +215,28 @@ const Signup = () => {
     }
   };
 
+  const handleResendOTP = async (userType: 'user' | 'admin') => {
+    setResendLoading(true);
+    const email = userType === 'user' ? userForm.email : adminForm.email;
+    if (!email) {
+      toast({
+        title: "Error",
+        description: "Enter email to resend OTP.",
+        variant: "destructive"
+      });
+      setResendLoading(false);
+      return;
+    }
+    const success = await sendOTP(email, userType);
+    if (success) {
+      toast({
+        title: "OTP Sent",
+        description: `A new OTP has been sent to ${email}.`,
+      });
+    }
+    setResendLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-saffron-50 via-white to-green-50 relative overflow-hidden">
       <div className="absolute inset-0 blockchain-grid opacity-20"></div>
@@ -378,6 +401,15 @@ const Signup = () => {
                         value={userForm.otp}
                         onChange={(e) => setUserForm({...userForm, otp: e.target.value})}
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-2 w-full"
+                        onClick={() => handleResendOTP("user")}
+                        disabled={resendLoading || otpLoading || loading}
+                      >
+                        {resendLoading ? "Resending..." : "Resend OTP"}
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -483,6 +515,15 @@ const Signup = () => {
                         value={adminForm.otp}
                         onChange={(e) => setAdminForm({...adminForm, otp: e.target.value})}
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-2 w-full"
+                        onClick={() => handleResendOTP("admin")}
+                        disabled={resendLoading || otpLoading || loading}
+                      >
+                        {resendLoading ? "Resending..." : "Resend OTP"}
+                      </Button>
                     </div>
                   )}
                 </div>
