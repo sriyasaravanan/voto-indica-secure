@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -134,7 +133,7 @@ export const useAuth = () => {
       }
 
       // Type assertion since we know the structure from our SQL function
-      return data as LoginVerificationResult;
+      return data as unknown as LoginVerificationResult;
     } catch (error) {
       console.error('Error in verifyLogin:', error);
       return { success: false, error: 'Verification failed' };
