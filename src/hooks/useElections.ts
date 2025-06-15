@@ -270,6 +270,34 @@ export const useElections = () => {
     try {
       console.log('Attempting to cast vote for election:', electionId, 'candidate:', candidateId);
       
+      // Check if user is authenticated
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to cast your vote",
+          variant: "destructive"
+        });
+        return null;
+      }
+
+      // Check if user has already voted in this election
+      const { data: existingVote } = await supabase
+        .from('votes')
+        .select('id')
+        .eq('voter_id', user.id)
+        .eq('election_id', electionId)
+        .single();
+
+      if (existingVote) {
+        toast({
+          title: "Already Voted",
+          description: "You have already cast your vote in this election",
+          variant: "destructive"
+        });
+        return null;
+      }
+      
       const { data, error } = await supabase.rpc('cast_vote', {
         p_election_id: electionId,
         p_candidate_id: candidateId
