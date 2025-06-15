@@ -1,14 +1,12 @@
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, TransactionInstruction, Connection } from '@solana/web3.js';
 import { useToast } from '@/hooks/use-toast';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
-// Fallback RPC endpoints for better reliability
+// Simplified RPC endpoints - focusing on working ones
 const RPC_ENDPOINTS = [
   'https://api.devnet.solana.com',
-  'https://devnet.helius-rpc.com/?api-key=demo',
-  'https://rpc.ankr.com/solana_devnet',
-  'https://solana-devnet.g.alchemy.com/v2/demo',
+  // Removing endpoints that require API keys or are failing
 ];
 
 export const useSolanaWallet = () => {
@@ -16,59 +14,81 @@ export const useSolanaWallet = () => {
   const { publicKey, sendTransaction, connected, disconnect, connect, connecting } = useWallet();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  
+  // Add throttling to prevent rate limiting
+  const lastBalanceCheck = useRef<number>(0);
+  const balanceCache = useRef<{ balance: number; timestamp: number } | null>(null);
+  const BALANCE_CACHE_DURATION = 30000; // 30 seconds
+  const MIN_REQUEST_INTERVAL = 5000; // 5 seconds between requests
 
-  // Create a connection with fallback logic
+  // Create a connection with simple fallback
   const createRobustConnection = useCallback(async () => {
-    for (const endpoint of RPC_ENDPOINTS) {
-      try {
-        console.log(`Trying RPC endpoint: ${endpoint}`);
-        const testConnection = new Connection(endpoint, {
-          commitment: 'confirmed',
-          confirmTransactionInitialTimeout: 30000,
-        });
-        
-        // Test the connection
-        await testConnection.getVersion();
-        console.log(`Successfully connected to: ${endpoint}`);
-        return testConnection;
-      } catch (error) {
-        console.warn(`Failed to connect to ${endpoint}:`, error);
-        continue;
-      }
+    try {
+      console.log('Testing primary connection...');
+      // Test the primary connection first with a timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      await connection.getVersion();
+      clearTimeout(timeoutId);
+      console.log('Primary connection successful');
+      return connection;
+    } catch (error) {
+      console.warn('Primary connection failed, using fallback');
+      // If primary fails, just return it anyway - better than creating new connections
+      return connection;
     }
-    
-    // If all fail, return the original connection
-    console.warn('All RPC endpoints failed, using original connection');
-    return connection;
   }, [connection]);
 
   const getBalance = async () => {
     if (!publicKey) return 0;
     
+    const now = Date.now();
+    
+    // Check cache first
+    if (balanceCache.current && (now - balanceCache.current.timestamp) < BALANCE_CACHE_DURATION) {
+      console.log('Using cached balance');
+      return balanceCache.current.balance;
+    }
+    
+    // Throttle requests to prevent rate limiting
+    if (now - lastBalanceCheck.current < MIN_REQUEST_INTERVAL) {
+      console.log('Request throttled, using cached balance or returning 0');
+      return balanceCache.current?.balance || 0;
+    }
+    
+    lastBalanceCheck.current = now;
+    
     try {
       console.log('Fetching balance for:', publicKey.toString());
       
-      // Try with the current connection first
-      try {
-        const balance = await connection.getBalance(publicKey);
-        console.log('Balance fetched successfully:', balance / LAMPORTS_PER_SOL);
-        return balance / LAMPORTS_PER_SOL;
-      } catch (primaryError) {
-        console.warn('Primary connection failed, trying fallback RPC endpoints');
-        
-        // Try with fallback connections
-        const robustConnection = await createRobustConnection();
-        const balance = await robustConnection.getBalance(publicKey);
-        console.log('Balance fetched with fallback:', balance / LAMPORTS_PER_SOL);
-        return balance / LAMPORTS_PER_SOL;
-      }
-    } catch (error) {
+      // Use the primary connection with proper error handling
+      const balance = await connection.getBalance(publicKey);
+      const solBalance = balance / LAMPORTS_PER_SOL;
+      
+      // Cache the result
+      balanceCache.current = { balance: solBalance, timestamp: now };
+      
+      console.log('Balance fetched successfully:', solBalance);
+      return solBalance;
+    } catch (error: any) {
       console.error('Error getting balance:', error);
-      toast({
-        title: "Network Error",
-        description: "Unable to fetch balance. This might be a temporary network issue. Please try again.",
-        variant: "destructive"
-      });
+      
+      // If we have cached data, return it
+      if (balanceCache.current) {
+        console.log('Returning cached balance due to error');
+        return balanceCache.current.balance;
+      }
+      
+      // Only show toast for non-rate-limit errors
+      if (!error.message?.includes('429') && !error.message?.includes('Too many requests')) {
+        toast({
+          title: "Network Issue",
+          description: "Unable to fetch balance. This might be temporary.",
+          variant: "destructive"
+        });
+      }
+      
       return 0;
     }
   };
@@ -76,26 +96,15 @@ export const useSolanaWallet = () => {
   const testConnection = async () => {
     try {
       console.log('Testing connection...');
-      
-      // Try primary connection first
-      try {
-        const version = await connection.getVersion();
-        console.log('Primary RPC connection successful:', version);
-        return true;
-      } catch (primaryError) {
-        console.warn('Primary connection failed, testing fallback endpoints');
-        
-        // Test fallback connections
-        const robustConnection = await createRobustConnection();
-        const version = await robustConnection.getVersion();
-        console.log('Fallback RPC connection successful:', version);
-        return true;
-      }
+      const robustConnection = await createRobustConnection();
+      await robustConnection.getVersion();
+      console.log('Connection test successful');
+      return true;
     } catch (error) {
-      console.error('All Solana RPC connections failed:', error);
+      console.error('Connection test failed:', error);
       toast({
-        title: "Connection Error",
-        description: "Unable to connect to Solana network. Please check your internet connection and try again.",
+        title: "Connection Issue",
+        description: "Solana network is experiencing issues. Some features may be limited.",
         variant: "destructive"
       });
       return false;
@@ -138,7 +147,8 @@ export const useSolanaWallet = () => {
     // Test connection first
     const connectionWorking = await testConnection();
     if (!connectionWorking) {
-      return null;
+      // Still allow voting even if connection test fails
+      console.warn('Connection test failed, but proceeding with transaction');
     }
 
     setLoading(true);

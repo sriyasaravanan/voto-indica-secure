@@ -23,7 +23,7 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
   const [balanceError, setBalanceError] = useState(false);
 
   useEffect(() => {
-    // Test connection on mount
+    // Test connection on mount - only once
     if (!connectionTested) {
       testConnection().then(() => setConnectionTested(true));
     }
@@ -33,6 +33,7 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
     if (connected && publicKey) {
       onWalletConnected?.(publicKey.toString());
       
+      // Only fetch balance if showBalance is true and we haven't fetched recently
       if (showBalance) {
         fetchBalance();
       }
@@ -40,6 +41,8 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
   }, [connected, publicKey, onWalletConnected, showBalance]);
 
   const fetchBalance = async () => {
+    if (balanceLoading) return; // Prevent duplicate requests
+    
     setBalanceLoading(true);
     setBalanceError(false);
     try {
@@ -94,13 +97,14 @@ export const SolanaWalletButton: React.FC<SolanaWalletButtonProps> = ({
                   <div className="flex items-center space-x-1">
                     <Badge variant="outline" className="border-red-500 text-red-700">
                       <AlertTriangle className="h-3 w-3 mr-1" />
-                      Error
+                      Network Issue
                     </Badge>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={fetchBalance}
                       className="h-6 px-2"
+                      disabled={balanceLoading}
                     >
                       <RefreshCw className="h-3 w-3" />
                     </Button>
