@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -66,6 +67,8 @@ export const useAuth = () => {
 
   const createProfile = async (userId: string, email: string, userType: 'voter' | 'admin', additionalData?: any) => {
     try {
+      console.log('Creating profile for user:', userId, 'email:', email, 'type:', userType);
+      
       // Generate unique ID based on user type
       const { data: uniqueId, error: idError } = await supabase
         .rpc(userType === 'voter' ? 'generate_unique_voter_id' : 'generate_unique_admin_id');
@@ -75,22 +78,33 @@ export const useAuth = () => {
         throw new Error('Failed to generate unique ID');
       }
 
+      console.log('Generated unique ID:', uniqueId);
+
+      const profileData = {
+        id: userId,
+        email: email, // Make sure email is stored
+        user_type: userType,
+        verified: true,
+        unique_id: uniqueId,
+        full_name: additionalData?.name || null,
+        aadhar_number: additionalData?.aadhar || null,
+        constituency: additionalData?.address || null
+      };
+
+      console.log('Inserting profile data:', profileData);
+
       const { data, error } = await supabase
         .from('profiles')
-        .insert([{
-          id: userId,
-          email: email,
-          user_type: userType,
-          verified: true,
-          unique_id: uniqueId,
-          full_name: additionalData?.name,
-          aadhar_number: additionalData?.aadhar,
-          constituency: additionalData?.address
-        }])
+        .insert([profileData])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error inserting profile:', error);
+        throw error;
+      }
+
+      console.log('Profile created successfully:', data);
 
       if (data) {
         const profile: UserProfile = {
@@ -121,6 +135,8 @@ export const useAuth = () => {
 
   const verifyLogin = async (uniqueId: string, aadharNumber: string): Promise<LoginVerificationResult> => {
     try {
+      console.log('Verifying login with unique ID:', uniqueId, 'and Aadhar:', aadharNumber);
+      
       const { data, error } = await supabase
         .rpc('verify_user_login', {
           p_unique_id: uniqueId,
@@ -131,6 +147,8 @@ export const useAuth = () => {
         console.error('Error verifying login:', error);
         return { success: false, error: 'Verification failed' };
       }
+
+      console.log('Login verification response:', data);
 
       // Type assertion since we know the structure from our SQL function
       return data as unknown as LoginVerificationResult;
