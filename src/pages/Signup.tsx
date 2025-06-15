@@ -10,6 +10,7 @@ import { Vote, Shield, Mail, Lock, User, ArrowLeft, Phone, MapPin } from "lucide
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useOTP } from "@/hooks/useOTP";
+import { useAuth } from "@/hooks/useAuth";
 
 const Signup = () => {
   const [userForm, setUserForm] = useState({
@@ -40,6 +41,7 @@ const Signup = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { sendOTP, verifyOTP, isLoading: otpLoading } = useOTP();
+  const { createProfile } = useAuth();
 
   const generateUniqueId = (type: string) => {
     const timestamp = Date.now().toString().slice(-6);
@@ -77,13 +79,23 @@ const Signup = () => {
       });
       return;
     }
+
+    // Additional validation for user (voter) registration
+    if (userType === 'user') {
+      if (!userForm.aadhar || userForm.aadhar.length !== 12) {
+        toast({
+          title: "Error",
+          description: "Please enter a valid 12-digit Aadhar number",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
     
     try {
       const success = await sendOTP(email, userType);
       if (success) {
         setOtpSent(true);
-        const newId = generateUniqueId(userType);
-        setGeneratedId(newId);
       }
     } catch (error) {
       console.error('Error sending OTP:', error);
@@ -174,33 +186,33 @@ const Signup = () => {
       }
 
       if (authData.user) {
-        // Create profile
-        const { error: profileError } = await supabase.from('profiles').insert([{
-          id: authData.user.id,
-          email: form.email,
-          user_type: userType === 'user' ? 'voter' : 'admin',
-          full_name: form.name,
-          verified: true,
-          ...(userType === 'user' ? {
-            constituency: userForm.address
-          } : {})
-        }]);
+        // Create profile with unique ID
+        const profileResult = await createProfile(
+          authData.user.id, 
+          form.email, 
+          userType === 'user' ? 'voter' : 'admin',
+          form
+        );
 
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
+        if (profileResult) {
+          setGeneratedId(profileResult.uniqueId);
+          
+          // Store registration on blockchain
+          await storeRegistrationOnBlockchain(authData.user.id, form, userType);
+
+          toast({
+            title: "Registration Successful",
+            description: `Your unique ID is: ${profileResult.uniqueId}. Please save this ID for future login.`,
+          });
+
+          // Don't auto-navigate, let user see their ID
+        } else {
+          toast({
+            title: "Error", 
+            description: "Failed to create profile",
+            variant: "destructive"
+          });
         }
-
-        // Store registration on blockchain
-        await storeRegistrationOnBlockchain(authData.user.id, form, userType);
-
-        toast({
-          title: "Registration Successful",
-          description: `Your account has been registered successfully. ID: ${generatedId}`,
-        });
-
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
       }
     } catch (error) {
       console.error('Registration error:', error);
@@ -255,7 +267,13 @@ const Signup = () => {
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-medium text-green-800">Your Unique ID:</p>
                 <p className="text-lg font-mono text-green-900">{generatedId}</p>
-                <p className="text-xs text-green-600 mt-1">Please save this ID for future login</p>
+                <p className="text-xs text-green-600 mt-1">⚠️ IMPORTANT: Save this ID! You'll need it to login along with your Aadhar number.</p>
+                <Button 
+                  onClick={() => navigate('/login')}
+                  className="w-full mt-3 bg-green-600 hover:bg-green-700"
+                >
+                  Continue to Login
+                </Button>
               </div>
             )}
 
@@ -313,14 +331,15 @@ const Signup = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="user-aadhar">Aadhar Number</Label>
+                    <Label htmlFor="user-aadhar">Aadhar Number *</Label>
                     <Input
                       id="user-aadhar"
                       placeholder="XXXX XXXX XXXX"
                       maxLength={12}
                       value={userForm.aadhar}
-                      onChange={(e) => setUserForm({...userForm, aadhar: e.target.value})}
+                      onChange={(e) => setUserForm({...userForm, aadhar: e.target.value.replace(/\D/g, '')})}
                     />
+                    <p className="text-xs text-gray-500">Required for login verification</p>
                   </div>
 
                   <div className="space-y-2">

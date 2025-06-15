@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -11,6 +10,8 @@ export interface UserProfile {
   full_name: string | null;
   constituency: string | null;
   verified: boolean;
+  unique_id: string | null;
+  aadhar_number: string | null;
 }
 
 export const useAuth = () => {
@@ -39,7 +40,9 @@ export const useAuth = () => {
           voter_id: data.voter_id,
           full_name: data.full_name,
           constituency: data.constituency,
-          verified: data.verified
+          verified: data.verified,
+          unique_id: data.unique_id,
+          aadhar_number: data.aadhar_number
         };
         setProfile(profile);
         return profile;
@@ -51,15 +54,28 @@ export const useAuth = () => {
     }
   };
 
-  const createProfile = async (userId: string, email: string, userType: 'voter' | 'admin') => {
+  const createProfile = async (userId: string, email: string, userType: 'voter' | 'admin', additionalData?: any) => {
     try {
+      // Generate unique ID based on user type
+      const { data: uniqueId, error: idError } = await supabase
+        .rpc(userType === 'voter' ? 'generate_unique_voter_id' : 'generate_unique_admin_id');
+
+      if (idError) {
+        console.error('Error generating unique ID:', idError);
+        throw new Error('Failed to generate unique ID');
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .insert([{
           id: userId,
           email: email,
           user_type: userType,
-          verified: true
+          verified: true,
+          unique_id: uniqueId,
+          full_name: additionalData?.name,
+          aadhar_number: additionalData?.aadhar,
+          constituency: additionalData?.address
         }])
         .select()
         .single();
@@ -74,10 +90,12 @@ export const useAuth = () => {
           voter_id: data.voter_id,
           full_name: data.full_name,
           constituency: data.constituency,
-          verified: data.verified
+          verified: data.verified,
+          unique_id: data.unique_id,
+          aadhar_number: data.aadhar_number
         };
         setProfile(profile);
-        return profile;
+        return { profile, uniqueId };
       }
       return null;
     } catch (error) {
@@ -88,6 +106,26 @@ export const useAuth = () => {
         variant: "destructive"
       });
       return null;
+    }
+  };
+
+  const verifyLogin = async (uniqueId: string, aadharNumber: string) => {
+    try {
+      const { data, error } = await supabase
+        .rpc('verify_user_login', {
+          p_unique_id: uniqueId,
+          p_aadhar_number: aadharNumber
+        });
+
+      if (error) {
+        console.error('Error verifying login:', error);
+        return { success: false, error: 'Verification failed' };
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error in verifyLogin:', error);
+      return { success: false, error: 'Verification failed' };
     }
   };
 
@@ -135,6 +173,7 @@ export const useAuth = () => {
     loading,
     fetchProfile,
     createProfile,
+    verifyLogin,
     signOut
   };
 };
