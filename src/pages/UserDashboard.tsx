@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Vote, Shield, Eye, CheckCircle, Users, Calendar, MapPin, LogOut, Clock, Trophy } from "lucide-react";
+import { Vote, Shield, Eye, CheckCircle, Users, Calendar, MapPin, LogOut, Clock, Trophy, RefreshCw, AlertTriangle } from "lucide-react";
 import { useElections } from "@/hooks/useElections";
 import { useBlockchain } from "@/hooks/useBlockchain";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,15 +19,35 @@ const UserDashboard = () => {
   const [voteHash, setVoteHash] = useState("");
   const [solanaSignature, setSolanaSignature] = useState("");
   const [activeTab, setActiveTab] = useState("elections");
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
+  const [retryCount, setRetryCount] = useState(0);
   
   const { elections, candidates, loading: electionsLoading, fetchCandidates, castVote } = useElections();
   const { votes, blocks, verifyVoteHash } = useBlockchain();
   const { profile, signOut } = useAuth();
-  const { sendVoteTransaction, connected: walletConnected, getNetworkStats } = useSolanaWallet();
+  const { sendVoteTransaction, connected: walletConnected, getNetworkStats, testConnection } = useSolanaWallet();
   const { toast } = useToast();
 
   // Get active election for voting
   const activeElection = elections.find(e => e.status === 'Active');
+
+  // Test connection with retry mechanism
+  const testNetworkConnection = async () => {
+    try {
+      setConnectionStatus('checking');
+      const isConnected = await testConnection();
+      setConnectionStatus(isConnected ? 'connected' : 'error');
+      if (!isConnected && retryCount < 3) {
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          testNetworkConnection();
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      setConnectionStatus('error');
+    }
+  };
 
   useEffect(() => {
     if (activeElection && !selectedElection) {
@@ -39,13 +59,27 @@ const UserDashboard = () => {
     if (selectedElection) {
       console.log('Selected election changed to:', selectedElection);
       console.log('Fetching candidates for election:', selectedElection);
-      fetchCandidates(selectedElection);
+      
+      // Debounce candidate fetching to prevent rapid API calls
+      const timeoutId = setTimeout(() => {
+        fetchCandidates(selectedElection);
+      }, 500);
+      
       // Reset vote state when switching elections
       setVoteCast(false);
       setVoteHash("");
       setSolanaSignature("");
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [selectedElection, fetchCandidates]);
+
+  // Test connection when track vote tab is accessed
+  useEffect(() => {
+    if (activeTab === "track") {
+      testNetworkConnection();
+    }
+  }, [activeTab]);
 
   // Filter candidates for selected election (double check)
   const electionCandidates = candidates.filter(c => c.election_id === selectedElection);
@@ -403,11 +437,47 @@ const UserDashboard = () => {
             )}
           </TabsContent>
 
-          {/* Track Vote Tab */}
+          {/* Track Vote Tab - Enhanced with better connection handling */}
           <TabsContent value="track" className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-navy-900 mb-2">Track Your Vote</h2>
               <p className="text-navy-600">Verify your vote on both the local ledger and Solana blockchain</p>
+              
+              {/* Connection Status Display */}
+              <div className="mt-4 flex items-center justify-center space-x-2">
+                {connectionStatus === 'checking' && (
+                  <Badge variant="outline" className="border-yellow-500 text-yellow-700">
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                    Testing Connection...
+                  </Badge>
+                )}
+                {connectionStatus === 'connected' && (
+                  <Badge className="bg-green-500">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Network Connected
+                  </Badge>
+                )}
+                {connectionStatus === 'error' && (
+                  <div className="flex items-center space-x-2">
+                    <Badge variant="outline" className="border-red-500 text-red-700">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      Connection Issues
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setRetryCount(0);
+                        testNetworkConnection();
+                      }}
+                      className="h-6 px-2"
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Retry Connection
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <Card className="glass-card border-0 p-8 max-w-3xl mx-auto">
@@ -443,7 +513,12 @@ const UserDashboard = () => {
                               <div><span className="text-navy-600">Immutable:</span> <Badge className="bg-blue-500">Forever</Badge></div>
                             </>
                           ) : (
-                            <p className="text-gray-500">No blockchain transaction found</p>
+                            <div className="space-y-2">
+                              <p className="text-gray-500">No blockchain transaction found</p>
+                              {connectionStatus === 'error' && (
+                                <p className="text-red-500 text-xs">Network connection issues may prevent blockchain verification</p>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -463,6 +538,8 @@ const UserDashboard = () => {
                         <div className="flex items-center">
                           {solanaSignature ? 
                             <CheckCircle className="h-4 w-4 text-purple-500 mr-2" /> : 
+                            connectionStatus === 'error' ?
+                            <AlertTriangle className="h-4 w-4 text-red-400 mr-2" /> :
                             <Clock className="h-4 w-4 text-gray-400 mr-2" />
                           }
                           Blockchain Recorded
@@ -470,6 +547,8 @@ const UserDashboard = () => {
                         <div className="flex items-center">
                           {solanaSignature ? 
                             <CheckCircle className="h-4 w-4 text-purple-500 mr-2" /> : 
+                            connectionStatus === 'error' ?
+                            <AlertTriangle className="h-4 w-4 text-red-400 mr-2" /> :
                             <Clock className="h-4 w-4 text-gray-400 mr-2" />
                           }
                           Immutable Storage
@@ -477,6 +556,8 @@ const UserDashboard = () => {
                         <div className="flex items-center">
                           {solanaSignature ? 
                             <CheckCircle className="h-4 w-4 text-purple-500 mr-2" /> : 
+                            connectionStatus === 'error' ?
+                            <AlertTriangle className="h-4 w-4 text-red-400 mr-2" /> :
                             <Clock className="h-4 w-4 text-gray-400 mr-2" />
                           }
                           Public Auditability
@@ -484,6 +565,8 @@ const UserDashboard = () => {
                         <div className="flex items-center">
                           {solanaSignature ? 
                             <CheckCircle className="h-4 w-4 text-purple-500 mr-2" /> : 
+                            connectionStatus === 'error' ?
+                            <AlertTriangle className="h-4 w-4 text-red-400 mr-2" /> :
                             <Clock className="h-4 w-4 text-gray-400 mr-2" />
                           }
                           Decentralized Consensus
@@ -491,6 +574,32 @@ const UserDashboard = () => {
                       </div>
                     </div>
                   </div>
+
+                  {connectionStatus === 'error' && (
+                    <div className="border-t border-gray-200 pt-6">
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div className="flex items-center">
+                          <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
+                          <span className="text-yellow-800 font-medium">Network Connection Issues</span>
+                        </div>
+                        <p className="text-yellow-700 text-sm mt-1">
+                          Some blockchain features may be temporarily unavailable. Your vote is still securely recorded locally.
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setRetryCount(0);
+                            testNetworkConnection();
+                          }}
+                          className="mt-2"
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Retry Connection
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center">
@@ -532,13 +641,6 @@ const UserDashboard = () => {
                       </div>
                       <h4 className="text-2xl font-bold text-green-800 mb-2">Official Winner Declared</h4>
                       {(() => {
-                        // Fetch fresh candidates for results display
-                        useEffect(() => {
-                          if (selectedElection) {
-                            fetchCandidates(selectedElection);
-                          }
-                        }, [selectedElection]);
-                        
                         const results = getElectionResults(selectedElection);
                         const winner = results[0];
                         return winner ? (
