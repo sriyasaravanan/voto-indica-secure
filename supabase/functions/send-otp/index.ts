@@ -27,8 +27,16 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const { email, userType }: SendOTPRequest = await req.json();
 
+    console.log("Received request for email:", email, "userType:", userType);
+
     if (!email || !userType) {
       throw new Error("Email and user type are required");
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new Error("Invalid email format");
     }
 
     // Create Supabase client with service role key
@@ -46,7 +54,17 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Failed to generate OTP");
     }
 
+    console.log("Generated OTP:", otpCode, "for email:", email);
+
+    // Verify Resend API key exists
+    if (!Deno.env.get("RESEND_API_KEY")) {
+      console.error("RESEND_API_KEY not found in environment variables");
+      throw new Error("Email service not configured");
+    }
+
     // Send email with OTP
+    console.log("Attempting to send email to:", email);
+    
     const emailResponse = await resend.emails.send({
       from: "भारत वोट <onboarding@resend.dev>",
       to: [email],
@@ -79,12 +97,20 @@ const handler = async (req: Request): Promise<Response> => {
       `,
     });
 
-    console.log("Email sent successfully:", emailResponse);
+    console.log("Email response:", emailResponse);
+
+    if (emailResponse.error) {
+      console.error("Resend error:", emailResponse.error);
+      throw new Error(`Failed to send email: ${emailResponse.error.message}`);
+    }
+
+    console.log("Email sent successfully to:", email, "with ID:", emailResponse.data?.id);
 
     return new Response(JSON.stringify({ 
       success: true, 
       message: "OTP sent successfully",
-      otpId: emailResponse.data?.id 
+      otpId: emailResponse.data?.id,
+      email: email
     }), {
       status: 200,
       headers: {
@@ -95,7 +121,10 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (error: any) {
     console.error("Error in send-otp function:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: "Check if your email domain is verified in Resend and API key is valid"
+      }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },

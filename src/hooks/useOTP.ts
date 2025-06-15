@@ -16,15 +16,19 @@ export const useOTP = (): UseOTPReturn => {
   const sendOTP = async (email: string, userType: 'user' | 'admin'): Promise<boolean> => {
     setIsLoading(true);
     try {
+      console.log('Sending OTP to:', email, 'Type:', userType);
+      
       const { data, error } = await supabase.functions.invoke('send-otp', {
         body: { email, userType }
       });
+
+      console.log('OTP Response:', data, 'Error:', error);
 
       if (error) {
         console.error('Error sending OTP:', error);
         toast({
           title: "Error",
-          description: "Failed to send OTP. Please try again.",
+          description: error.message || "Failed to send OTP. Please try again.",
           variant: "destructive"
         });
         return false;
@@ -33,17 +37,23 @@ export const useOTP = (): UseOTPReturn => {
       if (data?.success) {
         toast({
           title: "OTP Sent",
-          description: `Verification code sent to ${email}`,
+          description: `Verification code sent to ${email}. Please check your inbox and spam folder.`,
         });
         return true;
+      } else {
+        console.error('OTP sending failed:', data);
+        toast({
+          title: "Error",
+          description: data?.error || "Failed to send OTP. Please check your email address and try again.",
+          variant: "destructive"
+        });
+        return false;
       }
-
-      return false;
     } catch (error) {
       console.error('Error sending OTP:', error);
       toast({
         title: "Error",
-        description: "Failed to send OTP. Please try again.",
+        description: "Failed to send OTP. Please check your internet connection and try again.",
         variant: "destructive"
       });
       return false;
@@ -55,6 +65,8 @@ export const useOTP = (): UseOTPReturn => {
   const verifyOTP = async (email: string, otpCode: string): Promise<boolean> => {
     setIsLoading(true);
     try {
+      console.log('Verifying OTP for:', email);
+      
       const { data, error } = await supabase
         .rpc('verify_otp', { 
           p_email: email, 
