@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -12,6 +13,16 @@ export interface UserProfile {
   verified: boolean;
   unique_id: string | null;
   aadhar_number: string | null;
+}
+
+interface LoginVerificationResult {
+  success: boolean;
+  user_id?: string;
+  email?: string;
+  user_type?: string;
+  full_name?: string;
+  unique_id?: string;
+  error?: string;
 }
 
 export const useAuth = () => {
@@ -109,7 +120,7 @@ export const useAuth = () => {
     }
   };
 
-  const verifyLogin = async (uniqueId: string, aadharNumber: string) => {
+  const verifyLogin = async (uniqueId: string, aadharNumber: string): Promise<LoginVerificationResult> => {
     try {
       const { data, error } = await supabase
         .rpc('verify_user_login', {
@@ -122,7 +133,8 @@ export const useAuth = () => {
         return { success: false, error: 'Verification failed' };
       }
 
-      return data;
+      // Type assertion since we know the structure from our SQL function
+      return data as LoginVerificationResult;
     } catch (error) {
       console.error('Error in verifyLogin:', error);
       return { success: false, error: 'Verification failed' };
