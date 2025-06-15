@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -352,10 +351,59 @@ export const useElections = () => {
     }
   };
 
+  // New function to close elections where the date has passed
+  const closeFinishedElections = async () => {
+    try {
+      // Get current ISO timestamp
+      const now = new Date().toISOString();
+
+      // Fetch elections that are still Active and have an end_date in the past
+      const { data: overdueElections, error } = await supabase
+        .from('elections')
+        .select('id, end_date, status')
+        .eq('status', 'Active')
+        .lt('end_date', now);
+
+      if (error) {
+        console.error('Error fetching overdue elections:', error);
+        return;
+      }
+
+      if (overdueElections && overdueElections.length > 0) {
+        const overdueIds = overdueElections.map(e => e.id);
+        // Update their status to Completed
+        const { error: updateError } = await supabase
+          .from('elections')
+          .update({ status: 'Completed', updated_at: now })
+          .in('id', overdueIds);
+
+        if (updateError) {
+          console.error('Error updating overdue elections:', updateError);
+          toast({
+            title: "Error",
+            description: "Failed to auto-complete overdue elections.",
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Elections Auto-Closed",
+            description: `${overdueIds.length} election(s) have been automatically closed as their end date has passed.`,
+          });
+          // Refetch elections to get up-to-date list
+          await fetchElections();
+        }
+      }
+    } catch (err) {
+      console.error('Error in closeFinishedElections:', err);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       await fetchElections();
+      // After fetching elections, close finished elections if any
+      await closeFinishedElections();
       setLoading(false);
     };
 
@@ -371,6 +419,7 @@ export const useElections = () => {
     createElection,
     castVote,
     populateAllElectionsWithCandidates,
-    ensureStandardCandidates
+    ensureStandardCandidates,
+    closeFinishedElections // export in case needed elsewhere
   };
 };

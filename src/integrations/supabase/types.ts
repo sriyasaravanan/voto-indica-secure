@@ -157,33 +157,39 @@ export type Database = {
       }
       profiles: {
         Row: {
+          aadhar_number: string | null
           constituency: string | null
           created_at: string
           email: string | null
           full_name: string | null
           id: string
+          unique_id: string | null
           updated_at: string
           user_type: string
           verified: boolean | null
           voter_id: string | null
         }
         Insert: {
+          aadhar_number?: string | null
           constituency?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
           id: string
+          unique_id?: string | null
           updated_at?: string
           user_type: string
           verified?: boolean | null
           voter_id?: string | null
         }
         Update: {
+          aadhar_number?: string | null
           constituency?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
           id?: string
+          unique_id?: string | null
           updated_at?: string
           user_type?: string
           verified?: boolean | null
@@ -267,6 +273,14 @@ export type Database = {
         Args: { p_email: string; p_user_type: string }
         Returns: string
       }
+      generate_unique_admin_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_unique_voter_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       generate_vote_hash: {
         Args: {
           p_election_id: string
@@ -279,6 +293,10 @@ export type Database = {
       verify_otp: {
         Args: { p_email: string; p_otp_code: string }
         Returns: boolean
+      }
+      verify_user_login: {
+        Args: { p_unique_id: string; p_aadhar_number: string }
+        Returns: Json
       }
     }
     Enums: {
