@@ -268,7 +268,33 @@ export const useElections = () => {
   const castVote = async (electionId: string, candidateId: string) => {
     try {
       console.log('Attempting to cast vote for election:', electionId, 'candidate:', candidateId);
-      
+
+      // Fetch the election status before voting
+      const { data: electionData, error: electionError } = await supabase
+        .from('elections')
+        .select('status')
+        .eq('id', electionId)
+        .maybeSingle();
+
+      if (electionError) {
+        toast({
+          title: "Error",
+          description: "Unable to validate election status",
+          variant: "destructive"
+        });
+        return null;
+      }
+
+      // If not active, block voting and say closed
+      if (!electionData || electionData.status !== 'Active') {
+        toast({
+          title: "Election Closed",
+          description: "Voting for this election is closed.",
+          variant: "destructive"
+        });
+        return null;
+      }
+
       // Check if user is authenticated
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
