@@ -307,6 +307,93 @@ const AdminDashboard = () => {
     }
   };
 
+  // -- NEW: Overview election dialog state --
+  const [selectedOverviewElection, setSelectedOverviewElection] = useState<any | null>(null);
+  const [overviewEndDate, setOverviewEndDate] = useState("");
+  const [overviewCandForm, setOverviewCandForm] = useState<{ name: string; party: string; symbol: string; manifesto: string }>({
+    name: "",
+    party: "",
+    symbol: "",
+    manifesto: "",
+  });
+  const [savingEndDate, setSavingEndDate] = useState(false);
+  const [addingCandidate, setAddingCandidate] = useState(false);
+
+  // --- Functions to handle overview's dialog actions ---
+  const openOverviewElectionDialog = (election: any) => {
+    setSelectedOverviewElection(election);
+    setOverviewEndDate(election.end_date?.slice(0, 10) || "");
+    setOverviewCandForm({
+      name: "",
+      party: "",
+      symbol: "",
+      manifesto: "",
+    });
+  };
+
+  const handleSaveOverviewEndDate = async () => {
+    if (!selectedOverviewElection || !overviewEndDate) return;
+    setSavingEndDate(true);
+    try {
+      const { error } = await supabase.from("elections")
+        .update({
+          end_date: overviewEndDate,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", selectedOverviewElection.id);
+      if (error) throw error;
+      toast({
+        title: "End Date Updated",
+        description: "Election end date has been updated."
+      });
+      await fetchElections();
+      setSelectedOverviewElection({
+        ...selectedOverviewElection,
+        end_date: overviewEndDate
+      });
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to update end date.", variant: "destructive" });
+    }
+    setSavingEndDate(false);
+  };
+
+  const handleAddOverviewCandidate = async () => {
+    if (!selectedOverviewElection) return;
+    if (!overviewCandForm.name || !overviewCandForm.party || !overviewCandForm.symbol) {
+      toast({ title: "Fill Required Fields", description: "Name, Party, and Symbol are required.", variant: "destructive" });
+      return;
+    }
+    setAddingCandidate(true);
+    try {
+      const { error } = await supabase.from("candidates").insert([{
+        election_id: selectedOverviewElection.id,
+        name: overviewCandForm.name,
+        party: overviewCandForm.party,
+        symbol: overviewCandForm.symbol,
+        manifesto: overviewCandForm.manifesto,
+      }]);
+      if (error) throw error;
+      toast({ title: "Candidate Added", description: `${overviewCandForm.name} has been added.` });
+      await fetchCandidates(selectedOverviewElection.id);
+      setOverviewCandForm({ name: "", party: "", symbol: "", manifesto: "" });
+    } catch {
+      toast({ title: "Error", description: "Failed to add candidate", variant: "destructive" });
+    }
+    setAddingCandidate(false);
+  };
+
+  const handleDeleteOverviewCandidate = async (candidateId: string) => {
+    if (!selectedOverviewElection) return;
+    try {
+      const { error } = await supabase.from("candidates").delete().eq("id", candidateId);
+      if (error) throw error;
+      toast({ title: "Candidate Deleted", description: "Candidate has been removed." });
+      await fetchCandidates(selectedOverviewElection.id);
+    } catch {
+      toast({ title: "Error", description: "Failed to delete candidate", variant: "destructive" });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-saffron-50 via-white to-green-50 flex items-center justify-center">
@@ -386,7 +473,11 @@ const AdminDashboard = () => {
                 </h3>
                 <div className="space-y-4">
                   {elections.slice(0, 5).map((election) => (
-                    <div key={election.id} className="flex items-center justify-between p-3 bg-white/50 rounded-lg">
+                    <div 
+                      key={election.id}
+                      className="flex items-center justify-between p-3 bg-white/50 rounded-lg hover:shadow cursor-pointer transition"
+                      onClick={() => openOverviewElectionDialog(election)}
+                    >
                       <div>
                         <h4 className="font-medium text-navy-900">{election.title}</h4>
                         <p className="text-sm text-navy-600">{election.type} • {election.total_voters.toLocaleString()} voters</p>
@@ -397,6 +488,75 @@ const AdminDashboard = () => {
                     </div>
                   ))}
                 </div>
+
+                {/* Election Dialog for Overview Election list */}
+                <Dialog open={!!selectedOverviewElection} onOpenChange={(open) => {
+                  if (!open) setSelectedOverviewElection(null);
+                }}>
+                  <DialogContent>
+                    <DialogTitle>
+                      {selectedOverviewElection?.title}
+                      <span className="ml-2 text-xs text-navy-600 bg-saffron-50 px-2 rounded">{selectedOverviewElection?.constituency}</span>
+                    </DialogTitle>
+                    {/* End Date Editing */}
+                    <div className="mb-4">
+                      <Label className="mb-1">End Date</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={overviewEndDate}
+                          onChange={e => setOverviewEndDate(e.target.value)}
+                          className="w-40"
+                        />
+                        <Button 
+                          size="sm"
+                          disabled={savingEndDate || !overviewEndDate || overviewEndDate === selectedOverviewElection?.end_date?.slice(0, 10)}
+                          onClick={handleSaveOverviewEndDate}
+                          className="bg-saffron-500 hover:bg-saffron-600"
+                        >
+                          {savingEndDate ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                    {/* Add Candidate */}
+                    <div className="py-2 border-b">
+                      <div className="font-semibold mb-1">Add Candidate</div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <Input placeholder="Name" value={overviewCandForm.name} onChange={e => setOverviewCandForm(f => ({ ...f, name: e.target.value }))} />
+                        <Input placeholder="Party" value={overviewCandForm.party} onChange={e => setOverviewCandForm(f => ({ ...f, party: e.target.value }))} />
+                        <Input placeholder="Symbol (emoji)" value={overviewCandForm.symbol} onChange={e => setOverviewCandForm(f => ({ ...f, symbol: e.target.value }))} />
+                        <Input placeholder="Manifesto" value={overviewCandForm.manifesto} onChange={e => setOverviewCandForm(f => ({ ...f, manifesto: e.target.value }))} />
+                      </div>
+                      <Button size="sm" onClick={handleAddOverviewCandidate} disabled={addingCandidate} className="bg-green-600 text-white">
+                        {addingCandidate ? "Adding..." : "Add"}
+                      </Button>
+                    </div>
+                    {/* Existing Candidates */}
+                    <div className="mt-4">
+                      <div className="font-semibold mb-2">Existing Candidates</div>
+                      {candidates?.filter(c => c.election_id === selectedOverviewElection?.id).length === 0 ? (
+                        <div className="text-xs text-muted-foreground">No candidates found.</div>
+                      ) : (
+                        candidates.filter(c => c.election_id === selectedOverviewElection?.id).map(candidate => (
+                          <div key={candidate.id} className="flex items-center justify-between py-1 border-b last:border-b-0">
+                            <div className="flex gap-2 items-center">
+                              <span className="text-2xl">{candidate.symbol}</span>
+                              <span className="font-medium">{candidate.name}</span>
+                              <span className="text-xs text-navy-700">{candidate.party}</span>
+                            </div>
+                            <Button
+                              size="icon"
+                              variant="destructive"
+                              onClick={() => handleDeleteOverviewCandidate(candidate.id)}
+                            >
+                              <Trash className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </Card>
 
               <Card className="glass-card border-0 p-6">
